@@ -1,6 +1,6 @@
-# Red Warden - by CyberJump (Sharat)
-# Licensed under the MIT License
-# https://opensource.org/licenses/MIT 
+# Red Raven - by CyberJump (Sharat)
+# Licensed under the GNU General Public License v3.0
+# https://www.gnu.org/licenses/gpl-3.0.html
 
 import sys
 import os
