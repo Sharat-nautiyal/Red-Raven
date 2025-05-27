@@ -1,6 +1,6 @@
-# Red Warden - by CyberJump (Sharat Nautiyal)
+# Red Warden - by CyberJump (Sharat)
 # Licensed under the MIT License
-# https://opensource.org/licenses/MIT
+# https://opensource.org/licenses/MIT 
 
 import sys
 import os
@@ -1832,7 +1832,7 @@ class NetworkPenTestTool(QMainWindow):
         header_layout.addLayout(title_icon_layout)
 
         # Credit label below the title
-        credit_label_below_title = QLabel("Tool by CyberJump (Sharat Nautiyal)")
+        credit_label_below_title = QLabel("Tool by CyberJump (Sharat)")
         credit_label_below_title.setObjectName("creditLabel")
         credit_label_below_title.setFont(QFont("Arial", 11, QFont.Weight.Bold, italic=True))
         credit_label_below_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
