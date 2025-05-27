@@ -11,6 +11,7 @@ Welcome to Red Raven, a comprehensive network penetration testing tool designed 
 
 **Disclaimer:** This tool is for educational purposes only. Unauthorized activities on networks or systems without explicit permission are illegal and unethical. Always ensure you have proper authorization before performing any scans or interactions.
 
+
 ## 1. Overview
 
 Red Raven provides a graphical user interface (GUI) for performing various network penetration testing tasks, including:
@@ -198,5 +199,30 @@ This tab provides a simulated environment for data exfiltration, demonstrating h
 * **Real-time Output:** The output areas update in near real-time. For very verbose commands, there might be a slight delay as output is buffered.
 * **Stopping Operations:** Always use the dedicated "Stop" buttons to terminate ongoing operations gracefully. Closing the application window will also attempt to stop all running threads.
 * **Ethical Use:** Remember the core principle: **Always have explicit authorization** before performing any actions on a network or system. This tool is for learning and authorized testing only.
+
+## 6. License 
+
+Red Raven is licensed under the **GNU GPL v3.0**.
+
+You are free to use, modify, and distribute this software under GPLv3, ensuring derivatives remain open source.
+
+**Dependencies and Their Licenses**
+
+* Nmap (GPL)
+
+* Hydra (GPL)
+
+* Scapy (BSD)
+
+* Impacket (MIT)
+
+* CrackMapExec (MIT)
+
+* NetExec (various licenses)
+
+Please comply with each dependency’s license terms.
+
+-------
+
 
 Enjoy using Red Raven for your ethical penetration testing learning journey!
