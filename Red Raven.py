@@ -1,6 +1,10 @@
-# Red Raven - by CyberJump (Sharat)
-# Licensed under the GNU General Public License v3.0
-# https://www.gnu.org/licenses/gpl-3.0.html
+"""
+Red Raven - Network Pen Testing Framework
+(c) 2025 Sharat Nautiyal. All rights reserved.
+Licensed under the GNU General Public License v3.0
+https://www.gnu.org/licenses/gpl-3.0.html
+
+"""
 
 import sys
 import os
@@ -16,8 +20,8 @@ import socketserver
 import requests
 import tempfile
 from datetime import datetime
-from queue import Queue, Empty # Import Empty for queue timeout
-import importlib.util # For checking module existence
+from queue import Queue, Empty  # Import Empty for queue timeout
+import importlib.util  # For checking module existence
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -35,29 +39,34 @@ SIMULATED_EXFIL_RECEIVED_DIR = os.path.join(os.getcwd(), "exfil_received")
 # Ensure the directory exists
 os.makedirs(SIMULATED_EXFIL_RECEIVED_DIR, exist_ok=True)
 
+
 class ExfilServerSignals(QObject):
     """
     A QObject to emit signals from the HTTP server thread to the GUI thread.
     """
     update_output = pyqtSignal(str)
 
+
 # Instantiate the signals object
 exfil_server_signals = ExfilServerSignals()
 
 simulated_exfil_server = None
-simulated_exfil_server_thread = None # Keep track of the server thread
+simulated_exfil_server_thread = None  # Keep track of the server thread
+
 
 class ExfilHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     """
     Custom HTTP request handler for the simulated exfil server.
     """
+
     def do_POST(self):
         try:
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
 
             # Extract filename from headers, or use a default
-            filename = self.headers.get('X-Filename', f"received_file_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bin")
+            filename = self.headers.get('X-Filename',
+                                      f"received_file_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bin")
             filepath = os.path.join(SIMULATED_EXFIL_RECEIVED_DIR, filename)
 
             # Append to the file (simulating chunks being received)
@@ -70,7 +79,8 @@ class ExfilHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"File chunk received successfully!")
 
             # Emit signal to update GUI
-            exfil_server_signals.update_output.emit(f"  [SERVER] Received {len(post_data)} bytes for '{filename}'. Total size: {os.path.getsize(filepath)} bytes.\n")
+            exfil_server_signals.update_output.emit(
+                f"  [SERVER] Received {len(post_data)} bytes for '{filename}'. Total size: {os.path.getsize(filepath)} bytes.\n")
 
         except Exception as e:
             self.send_response(500)
@@ -119,18 +129,20 @@ def check_and_install_dependencies():
             print(f"Running command: {' '.join(pip_command)}")
             subprocess.check_call(pip_command)
             print("All missing packages installed successfully.")
-            return True # Indicate successful installation
+            return True  # Indicate successful installation
         except subprocess.CalledProcessError as e:
             print(f"Error installing packages: {e}")
             print("Please ensure you have pip installed and proper permissions (e.g., run with sudo on Linux).")
-            print(f"You might need to manually install them: pip install {' '.join(missing_packages)}")
-            return False # Indicate installation failure
+            print(
+                f"You might need to manually install them: pip install {' '.join(missing_packages)}")
+            return False  # Indicate installation failure
         except Exception as e:
             print(f"An unexpected error occurred during dependency installation: {e}")
             return False
     else:
         print("All required dependencies are already installed.")
-        return True # Indicate all dependencies are present
+        return True  # Indicate all dependencies are present
+
 
 # --- Global variable for Scapy availability ---
 # This will be set after the dependency check and potential installation
@@ -150,8 +162,8 @@ class CommandExecutionWorker(QThread):
         self.authorization_var = authorization_var
         self._is_running = True
         self._process = None
-        self.output_buffer = [] # Buffer for output
-        self.buffer_threshold = 20 # Emit after 20 lines
+        self.output_buffer = []  # Buffer for output
+        self.buffer_threshold = 20  # Emit after 20 lines
 
     def _flush_buffer(self):
         if self.output_buffer:
@@ -169,7 +181,8 @@ class CommandExecutionWorker(QThread):
         self.update_status.emit(f"Executing: {' '.join(self.command)}...")
         try:
             # Use shell=False and pass command as list for robustness
-            self._process = subprocess.Popen(self.command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+            self._process = subprocess.Popen(self.command, stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE, text=True, shell=False)
             while self._is_running:
                 if self._process.poll() is not None:
                     break
@@ -179,31 +192,32 @@ class CommandExecutionWorker(QThread):
                     self.output_buffer.append(output_line)
                     if len(self.output_buffer) >= self.buffer_threshold:
                         self._flush_buffer()
-                time.sleep(0.01) # Small sleep to prevent busy-waiting
+                time.sleep(0.01)  # Small sleep to prevent busy-waiting
 
-            stdout, stderr = self._process.communicate() # Read any remaining output
+            stdout, stderr = self._process.communicate()  # Read any remaining output
             if stdout:
                 self.output_buffer.append(stdout)
             if stderr:
                 self.output_buffer.append(f"\n--- Error Output ---\n{stderr}\n")
 
-            self._flush_buffer() # Flush any remaining output
+            self._flush_buffer()  # Flush any remaining output
             return_code = self._process.returncode
             self.update_output.emit(f"\n--- Command Finished with Return Code: {return_code} ---\n")
             self.update_status.emit(f"Command finished (code: {return_code}).")
 
         except FileNotFoundError:
-            self._flush_buffer() # Flush before error message
-            self.update_output.emit(f"Error: Command not found: {self.command[0]}\nEnsure it's installed and in your system's PATH.\n")
+            self._flush_buffer()  # Flush before error message
+            self.update_output.emit(
+                f"Error: Command not found: {self.command[0]}\nEnsure it's installed and in your system's PATH.\n")
             self.update_status.emit(f"Error: Command not found: {self.command[0]}.")
         except Exception as e:
-            self._flush_buffer() # Flush before error message
+            self._flush_buffer()  # Flush before error message
             self.update_output.emit(f"An error occurred: {e}\n")
             self.update_status.emit(f"Error: {e}")
         finally:
             self.command_finished.emit()
             if self._process:
-                self._process.wait() # Ensure process is fully terminated
+                self._process.wait()  # Ensure process is fully terminated
             self._process = None
 
     def stop(self):
@@ -215,12 +229,13 @@ class CommandExecutionWorker(QThread):
             except subprocess.TimeoutExpired:
                 self._process.kill()
 
+
 class AdvancedPortScanWorker(QThread):
     update_status = pyqtSignal(str)
     scan_finished = pyqtSignal()
-    data_available = pyqtSignal() # New signal to indicate data is in the queue
+    data_available = pyqtSignal()  # New signal to indicate data is in the queue
 
-    TIMEOUT = 0.5 # Socket timeout for connection attempts (from user's code)
+    TIMEOUT = 0.5  # Socket timeout for connection attempts (from user's code)
 
     def __init__(self, target_input, port_range_input, threads, authorization_var):
         super().__init__()
@@ -231,7 +246,7 @@ class AdvancedPortScanWorker(QThread):
         self._is_running = True
         self.q = Queue()
         self.hosts_to_scan = []
-        self.results_queue = Queue() # Thread-safe queue for results to GUI
+        self.results_queue = Queue()  # Thread-safe queue for results to GUI
 
     def _grab_banner(self, s):
         """Attempts to grab a banner from the socket."""
@@ -254,27 +269,27 @@ class AdvancedPortScanWorker(QThread):
         s.settimeout(self.TIMEOUT)
         try:
             result = s.connect_ex((host, port))
-            if result == 0: # Port is open
+            if result == 0:  # Port is open
                 banner_info = "No banner"
                 try:
                     # Attempt to send specific requests for common services for better banners
-                    if port == 80: # HTTP
+                    if port == 80:  # HTTP
                         s.sendall(b'GET / HTTP/1.0\r\nHost: ' + host.encode() + b'\r\n\r\n')
-                    elif port == 443: # HTTPS (just try to connect, banner grab might fail without SSL handshake)
-                        pass # No specific request, just try to read
-                    elif port == 21: # FTP
-                        pass # FTP server usually sends banner on connect
-                    elif port == 22: # SSH
-                        pass # SSH server usually sends banner on connect
-                    elif port == 23: # Telnet
-                        pass # Telnet server usually sends banner on connect
+                    elif port == 443:  # HTTPS (just try to connect, banner grab might fail without SSL handshake)
+                        pass  # No specific request, just try to read
+                    elif port == 21:  # FTP
+                        pass  # FTP server usually sends banner on connect
+                    elif port == 22:  # SSH
+                        pass  # SSH server usually sends banner on connect
+                    elif port == 23:  # Telnet
+                        pass  # Telnet server usually sends banner on connect
                     else:
                         # For other ports, just try to read whatever is sent
                         pass
 
                     banner_data = self._grab_banner(s)
                     if banner_data:
-                        banner_info = banner_data.split('\n')[0] # Take first line of banner
+                        banner_info = banner_data.split('\n')[0]  # Take first line of banner
                     else:
                         banner_info = "No banner received"
 
@@ -282,17 +297,17 @@ class AdvancedPortScanWorker(QThread):
                     banner_info = f"Banner grab error: {e}"
 
                 self.results_queue.put(f"[OPEN] {host}:{port:<5} | {banner_info}")
-                self.data_available.emit() # Emit signal to indicate new data
+                self.data_available.emit()  # Emit signal to indicate new data
             # Added a small sleep here to pace the scanning, regardless of result
-            time.sleep(0.001) # Small sleep to prevent busy-waiting and reduce CPU churn
+            time.sleep(0.001)  # Small sleep to prevent busy-waiting and reduce CPU churn
         except (socket.timeout, ConnectionRefusedError):
-            time.sleep(0.001) # Also sleep on common errors
-            pass # Port is closed or filtered, no output needed for these
+            time.sleep(0.001)  # Also sleep on common errors
+            pass  # Port is closed or filtered, no output needed for these
         except Exception as e:
             # Catch any other unexpected errors during socket creation or connection
-            self.results_queue.put(f"Error scanning {host}:{port}: {e}") # Add errors to queue too
-            self.data_available.emit() # Emit signal to indicate new data
-            time.sleep(0.001) # Also sleep on other errors
+            self.results_queue.put(f"Error scanning {host}:{port}: {e}")  # Add errors to queue too
+            self.data_available.emit()  # Emit signal to indicate new data
+            time.sleep(0.001)  # Also sleep on other errors
         finally:
             s.close()
 
@@ -300,21 +315,21 @@ class AdvancedPortScanWorker(QThread):
         """Worker function for each thread to process (host, port) tuples from the queue."""
         while self._is_running:
             try:
-                host, port = self.q.get(timeout=0.1) # Get task with a timeout
+                host, port = self.q.get(timeout=0.1)  # Get task with a timeout
 
-                if not self._is_running: # Check stop flag immediately after getting task
+                if not self._is_running:  # Check stop flag immediately after getting task
                     self.q.task_done()
                     break
 
                 self._scan_single_port(host, port)
                 self.q.task_done()
-            except Empty: # Use Empty from queue module
+            except Empty:  # Use Empty from queue module
                 if not self._is_running:
                     break
-                time.sleep(0.05) # Small sleep to prevent busy-waiting
+                time.sleep(0.05)  # Small sleep to prevent busy-waiting
             except Exception as e:
-                self.results_queue.put(f"Internal threader error: {e}\n") # Add errors to queue
-                self.data_available.emit() # Emit signal to indicate new data
+                self.results_queue.put(f"Internal threader error: {e}\n")  # Add errors to queue
+                self.data_available.emit()  # Emit signal to indicate new data
                 try:
                     self.q.task_done()
                 except ValueError:
@@ -325,7 +340,7 @@ class AdvancedPortScanWorker(QThread):
             self.results_queue.put("Authorization required to perform scan.\n")
             self.update_status.emit("Scan aborted: Authorization missing.")
             self.scan_finished.emit()
-            self.data_available.emit() # Ensure signal is emitted for the error message
+            self.data_available.emit()  # Ensure signal is emitted for the error message
             return
 
         self.results_queue.put("=" * 50 + "\n")
@@ -344,7 +359,8 @@ class AdvancedPortScanWorker(QThread):
             try:
                 self.hosts_to_scan = [socket.gethostbyname(self.target_input)]
             except socket.gaierror:
-                self.results_queue.put(f"Error: Hostname '{self.target_input}' could not be resolved.\n")
+                self.results_queue.put(
+                    f"Error: Hostname '{self.target_input}' could not be resolved.\n")
                 self.update_status.emit("Error: Hostname resolution failed.")
                 self.scan_finished.emit()
                 self.data_available.emit()
@@ -358,13 +374,15 @@ class AdvancedPortScanWorker(QThread):
                 start_port = end_port = int(self.port_range_input)
 
             if not (1 <= start_port <= 65535 and 1 <= end_port <= 65535 and start_port <= end_port):
-                self.results_queue.put("Error: Invalid port range. Ports must be between 1 and 65535.\n")
+                self.results_queue.put(
+                    "Error: Invalid port range. Ports must be between 1 and 65535.\n")
                 self.update_status.emit("Error: Invalid port range.")
                 self.scan_finished.emit()
                 self.data_available.emit()
                 return
         except ValueError:
-            self.results_queue.put("Error: Invalid port range format. Use '1-1000' or '80'.\n")
+            self.results_queue.put(
+                "Error: Invalid port range format. Use '1-1000' or '80'.\n")
             self.update_status.emit("Error: Invalid port range format.")
             self.scan_finished.emit()
             self.data_available.emit()
@@ -397,11 +415,11 @@ class AdvancedPortScanWorker(QThread):
             if not self._is_running:
                 break
 
-        self.q.join() # Wait for all tasks to be done
+        self.q.join()  # Wait for all tasks to be done
 
         # Ensure all worker threads have finished their current tasks
         for t in threads_list:
-            t.join(timeout=1) # Give a small timeout for threads to finish gracefully
+            t.join(timeout=1)  # Give a small timeout for threads to finish gracefully
 
         if self._is_running:
             self.results_queue.put("\n--- Port Scan Completed ---\n")
@@ -409,7 +427,7 @@ class AdvancedPortScanWorker(QThread):
         else:
             self.results_queue.put("\n--- Port Scan Stopped by User ---\n")
             self.update_status.emit("Scan stopped.")
-        self.data_available.emit() # Final emit to ensure all results are pulled
+        self.data_available.emit()  # Final emit to ensure all results are pulled
 
         self.scan_finished.emit()
 
@@ -437,8 +455,8 @@ class NmapScanWorker(QThread):
         self.authorization_var = authorization_var
         self._is_running = True
         self._process = None
-        self.output_buffer = [] # Buffer for output
-        self.buffer_threshold = 20 # Emit after 20 lines
+        self.output_buffer = []  # Buffer for output
+        self.buffer_threshold = 5  # Reduced for more frequent updates
 
     def _flush_buffer(self):
         if self.output_buffer:
@@ -452,53 +470,72 @@ class NmapScanWorker(QThread):
             self.scan_finished.emit()
             return
 
-        command = ["nmap", self.target_input, "-p", self.port_range_input]
-        self.output_buffer.append(f"--- Starting Nmap Port Scan ---\nCommand: {' '.join(command)}\n")
+        # Reordered arguments for common Nmap usage: nmap -p <ports> <target>
+        command = ["nmap", "-p", self.port_range_input, self.target_input]
+
+        self.output_buffer.append(f"--- Starting Nmap Port Scan ---\n")
+        self.output_buffer.append(f"Command: {' '.join(command)}\n")
+        self.output_buffer.append(f"Target: {self.target_input}, Ports: {self.port_range_input}\n")
+        self._flush_buffer()  # Flush initial messages
         self.update_status.emit("Scanning with Nmap...")
+
         try:
             # Use shell=False and pass command as list for robustness
-            self._process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
-            while self._is_running:
-                if self._process.poll() is not None:
-                    break
-                output_line = self._process.stdout.readline()
-                if output_line:
-                    self.output_buffer.append(output_line)
+            self._process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE, text=True, shell=False)
+
+            # Read stdout and stderr simultaneously to prevent deadlocks on large outputs
+            while self._is_running and self._process.poll() is None:
+                stdout_line = self._process.stdout.readline()
+                stderr_line = self._process.stderr.readline()
+
+                if stdout_line:
+                    self.output_buffer.append(stdout_line)
                     if len(self.output_buffer) >= self.buffer_threshold:
                         self._flush_buffer()
-                time.sleep(0.01)
+                if stderr_line:
+                    self.output_buffer.append(f"  [NMAP STDERR] {stderr_line}")
+                    if len(self.output_buffer) >= self.buffer_threshold:
+                        self._flush_buffer()
 
-            stdout, stderr = self._process.communicate()
-            if stdout:
-                self.output_buffer.append(stdout)
-            if stderr:
-                self.output_buffer.append(f"\n--- Nmap Error Output ---\n{stderr}\n")
+                # If both are empty and process is still running, sleep briefly
+                if not stdout_line and not stderr_line:
+                    time.sleep(0.01)
 
-            self._flush_buffer() # Flush any remaining output
-            self.update_status.emit("Nmap scan finished.")
+            # After the loop, read any remaining output
+            stdout_remaining, stderr_remaining = self._process.communicate()
+            if stdout_remaining:
+                self.output_buffer.append(stdout_remaining)
+            if stderr_remaining:
+                self.output_buffer.append(f"\n--- Nmap Final Error Output ---\n{stderr_remaining}\n")
+
+            self._flush_buffer()  # Flush any remaining output
+
+            return_code = self._process.returncode
+            self.update_results.emit(f"\n--- Nmap Scan Finished with Return Code: {return_code} ---\n")
+            self.update_status.emit(f"Nmap scan finished (code: {return_code}).")
 
         except FileNotFoundError:
-            self._flush_buffer() # Flush before error message
-            self.update_results.emit("Error: Nmap command not found.\nEnsure Nmap is installed and in your system's PATH.\n")
+            self._flush_buffer()  # Flush before error message
+            self.update_results.emit(
+                "Error: Nmap command not found.\nEnsure Nmap is installed and in your system's PATH.\n")
             self.update_status.emit("Error: Nmap not found.")
         except Exception as e:
-            self._flush_buffer() # Flush before error message
+            self._flush_buffer()  # Flush before error message
             self.update_results.emit(f"An error occurred during Nmap scan: {e}\n")
             self.update_status.emit(f"Error: {e}")
         finally:
             self.scan_finished.emit()
             if self._process:
-                self._process.wait()
-            self._process = None
+                # Ensure process is fully terminated and cleaned up
+                if self._process.poll() is None:  # If still running
+                    self._process.terminate()
+                    try:
+                        self._process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        self._process.kill()
+                self._process = None  # Clear process reference
 
-    def stop(self):
-        self._is_running = False
-        if self._process and self._process.poll() is None:
-            self._process.terminate()
-            try:
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
 
 class ScapyNetworkScanWorker(QThread):
     update_results = pyqtSignal(str)
@@ -511,8 +548,8 @@ class ScapyNetworkScanWorker(QThread):
         self.pcap_filename = pcap_filename
         self.authorization_var = authorization_var
         self._is_running = True
-        self.output_buffer = [] # Buffer for output
-        self.buffer_threshold = 10 # Emit after 10 lines
+        self.output_buffer = []  # Buffer for output
+        self.buffer_threshold = 10  # Emit after 10 lines
 
     def _flush_buffer(self):
         if self.output_buffer:
@@ -529,7 +566,7 @@ class ScapyNetworkScanWorker(QThread):
         if not SCAPY_AVAILABLE:
             self.update_results.emit("Error: Scapy is not installed. Cannot perform network discovery.\n")
             self.update_status.emit("Network discovery failed: Scapy not found.")
-            self.scan_finished.emit() # Ensure signal is emitted even on early exit
+            self.scan_finished.emit()  # Ensure signal is emitted even on early exit
             return
 
         self.output_buffer.append(f"--- Starting Scapy Network Discovery (ARP Scan) ---\n")
@@ -537,14 +574,14 @@ class ScapyNetworkScanWorker(QThread):
         if self.pcap_filename:
             self.output_buffer.append(f"Captured packets will be saved to: {self.pcap_filename}\n")
         self.output_buffer.append("This may take a moment...\n\n")
-        self._flush_buffer() # Flush initial messages
+        self._flush_buffer()  # Flush initial messages
         self.update_status.emit("Performing network discovery...")
 
         try:
             # ARP packet
-            from scapy.all import ARP, Ether, srp, wrpcap # Import here to ensure SCAPY_AVAILABLE check is done
+            from scapy.all import ARP, Ether, srp, wrpcap  # Import here to ensure SCAPY_AVAILABLE check is done
             arp = ARP(pdst=self.target_ip)
-            ether = Ether(dst="ff:ff:ff:ff:ff:ff") # Broadcast MAC
+            ether = Ether(dst="ff:ff:ff:ff:ff:ff")  # Broadcast MAC
             packet = ether / arp
 
             # Perform ARP request
@@ -559,7 +596,7 @@ class ScapyNetworkScanWorker(QThread):
             self.output_buffer.append("Available devices on the network:\n")
             self.output_buffer.append("{:<18} {:<18}\n".format("IP Address", "MAC Address"))
             self.output_buffer.append("-" * 37 + "\n")
-            self._flush_buffer() # Flush header
+            self._flush_buffer()  # Flush header
 
             for sent, received in answered_packets:
                 if not self._is_running:
@@ -570,9 +607,9 @@ class ScapyNetworkScanWorker(QThread):
                 self.output_buffer.append(f"{ip:<18} {mac:<18}\n")
                 if len(self.output_buffer) >= self.buffer_threshold:
                     self._flush_buffer()
-                captured_packets.append(received) # Store the received ARP response
+                captured_packets.append(received)  # Store the received ARP response
 
-            self._flush_buffer() # Flush any remaining client info
+            self._flush_buffer()  # Flush any remaining client info
 
             if not self._is_running:
                 self.update_results.emit("\n--- Network Discovery Stopped by User ---\n")
@@ -594,7 +631,8 @@ class ScapyNetworkScanWorker(QThread):
             self.update_status.emit("Network discovery completed.")
 
         except PermissionError:
-            self.update_results.emit("Error: Permission denied. Scapy often requires root/administrator privileges to send/receive raw packets.\nTry running the application with elevated privileges.\n")
+            self.update_results.emit(
+                "Error: Permission denied. Scapy often requires root/administrator privileges to send/receive raw packets.\nTry running the application with elevated privileges.\n")
             self.update_status.emit("Error: Permission denied for Scapy.")
         except Exception as e:
             self.update_results.emit(f"An unexpected error occurred during network discovery: {e}\n")
@@ -613,14 +651,14 @@ class NetExecWorker(QThread):
 
     def __init__(self, full_command_str, target_input_text, authorization_var):
         super().__init__()
-        self.full_command_str = full_command_str # This is the user-editable command
+        self.full_command_str = full_command_str  # This is the user-editable command
         self.target_input_text = target_input_text
         self.authorization_var = authorization_var
         self._is_running = True
         self._process = None
         self.targets = []
-        self.output_buffer = [] # Buffer for output
-        self.buffer_threshold = 20 # Emit after 20 lines
+        self.output_buffer = []  # Buffer for output
+        self.buffer_threshold = 20  # Emit after 20 lines
 
     def _flush_buffer(self):
         if self.output_buffer:
@@ -662,13 +700,13 @@ class NetExecWorker(QThread):
             for i, target in enumerate(self.targets):
                 if not self._is_running:
                     break
-                self.output_buffer.append(f"\n--- Executing on Host: {target} ({i+1}/{total_targets}) ---\n")
+                self.output_buffer.append(f"\n--- Executing on Host: {target} ({i + 1}/{total_targets}) ---\n")
                 self._flush_buffer()
-                self.update_status.emit(f"Running NetExec on {target} ({i+1}/{total_targets})...")
+                self.update_status.emit(f"Running NetExec on {target} ({i + 1}/{total_targets})...")
 
                 # Parse the user-provided command string
                 command_parts = shlex.split(self.full_command_str)
-                
+
                 # Replace <target_ip> placeholder or insert target if not present
                 final_command_parts = []
                 target_inserted = False
@@ -687,18 +725,19 @@ class NetExecWorker(QThread):
                         final_command_parts.extend([part, password])
                     else:
                         final_command_parts.append(part)
-                
+
                 # If <target_ip> was not found, try to intelligently insert it
                 if not target_inserted:
                     # Heuristic: insert after the tool name and protocol if they exist
                     if len(final_command_parts) >= 2 and \
-                       (final_command_parts[0].lower() == "netexec" or final_command_parts[0].lower() == "crackmapexec"):
+                            (final_command_parts[0].lower() == "netexec" or final_command_parts[
+                                0].lower() == "crackmapexec"):
                         # Check if the second part looks like a protocol
                         known_protocols = ["smb", "ssh", "winrm", "mssql", "ldap", "rdp", "vnc"]
                         if final_command_parts[1].lower() in known_protocols:
-                            final_command_parts.insert(2, target) # Insert after tool and protocol
+                            final_command_parts.insert(2, target)  # Insert after tool and protocol
                         else:
-                            final_command_parts.insert(1, target) # Insert after tool name
+                            final_command_parts.insert(1, target)  # Insert after tool name
                     else:
                         # Fallback: just append the target if no clear insertion point
                         final_command_parts.append(target)
@@ -725,7 +764,7 @@ class NetExecWorker(QThread):
                         stderr=subprocess.PIPE,
                         text=True,
                         bufsize=1,
-                        shell=False, # Explicitly set shell to False
+                        shell=False,  # Explicitly set shell to False
                         creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                     )
                     while self._is_running:
@@ -747,12 +786,14 @@ class NetExecWorker(QThread):
 
                     if self._is_running:
                         return_code = self._process.returncode
-                        self.update_output.emit(f"\n  NetExec command finished on {target} with exit code: {return_code}\n")
+                        self.update_output.emit(
+                            f"\n  NetExec command finished on {target} with exit code: {return_code}\n")
                     else:
                         self.update_output.emit(f"\n  NetExec command stopped by user on {target}.\n")
                 except FileNotFoundError:
                     self._flush_buffer()
-                    self.update_output.emit(f"  Error: '{executable_name}' command not found. Please ensure NetExec (or CrackMapExec) is installed and in your system's PATH.\n")
+                    self.update_output.emit(
+                        f"  Error: '{executable_name}' command not found. Please ensure NetExec (or CrackMapExec) is installed and in your system's PATH.\n")
                     self.update_status.emit(f"Error: {executable_name} not found.")
                 except Exception as e:
                     self._flush_buffer()
@@ -765,7 +806,7 @@ class NetExecWorker(QThread):
 
                 if not self._is_running:
                     break
-                self.update_output.emit("\n" + "="*50 + "\n")
+                self.update_output.emit("\n" + "=" * 50 + "\n")
 
             if self._is_running:
                 self.update_status.emit("NetExec finished.")
@@ -792,6 +833,7 @@ class NetExecWorker(QThread):
             except subprocess.TimeoutExpired:
                 self._process.kill()
 
+
 class DummyFileWorker(QThread):
     update_progress = pyqtSignal(int)
     update_label = pyqtSignal(str)
@@ -807,7 +849,7 @@ class DummyFileWorker(QThread):
 
     def run(self):
         if os.path.exists(self.file_path):
-            pass # We handle overwrite confirmation in the main thread
+            pass  # We handle overwrite confirmation in the main thread
 
         self.update_progress.emit(0)
         self.update_label.emit("Creating dummy file...")
@@ -828,7 +870,7 @@ class DummyFileWorker(QThread):
                     self.update_progress.emit(progress)
                     self.update_label.emit(f"Creating dummy file: {progress:.1f}%")
                     self.update_status.emit(f"Creating dummy file: {progress:.1f}%")
-                    time.sleep(0.005) # Small sleep to allow UI updates
+                    time.sleep(0.005)  # Small sleep to allow UI updates
 
             if self._is_running:
                 self.update_progress.emit(100)
@@ -851,6 +893,7 @@ class DummyFileWorker(QThread):
     def stop(self):
         self._is_running = False
 
+
 class ExfilWorker(QThread):
     update_progress = pyqtSignal(int)
     update_label = pyqtSignal(str)
@@ -866,8 +909,8 @@ class ExfilWorker(QThread):
         self.remote_url = remote_url
         self.exfil_type = exfil_type
         self._is_running = True
-        self.output_buffer = [] # Buffer for output
-        self.buffer_threshold = 10 # Emit after 10 lines
+        self.output_buffer = []  # Buffer for output
+        self.buffer_threshold = 10  # Emit after 10 lines
 
     def _flush_buffer(self):
         if self.output_buffer:
@@ -911,11 +954,13 @@ class ExfilWorker(QThread):
                             headers = {'X-Filename': os.path.basename(self.source_file)}
                             response = requests.post(self.remote_url, data=chunk, headers=headers, timeout=5)
                             if response.status_code != 200:
-                                self.output_buffer.append(f"  Error sending chunk: Server responded with {response.status_code}\n")
+                                self.output_buffer.append(
+                                    f"  Error sending chunk: Server responded with {response.status_code}\n")
                                 self._flush_buffer()
                                 break
                         except requests.exceptions.ConnectionError:
-                            self.output_buffer.append("  Error: Could not connect to the simulated exfil server. Is it running?\n")
+                            self.output_buffer.append(
+                                "  Error: Could not connect to the simulated exfil server. Is it running?\n")
                             self._flush_buffer()
                             break
                         except requests.exceptions.Timeout:
@@ -960,6 +1005,7 @@ class ExfilWorker(QThread):
     def stop(self):
         self._is_running = False
 
+
 class ExfilServerWorker(QThread):
     server_started = pyqtSignal(str)
     server_stopped = pyqtSignal(str)
@@ -976,7 +1022,7 @@ class ExfilServerWorker(QThread):
             Handler = ExfilHTTPRequestHandler
             # Use ThreadingTCPServer for concurrent requests
             self._server = socketserver.ThreadingTCPServer(("", self.port), Handler)
-            simulated_exfil_server = self._server # Store reference to the server instance
+            simulated_exfil_server = self._server  # Store reference to the server instance
 
             self.server_started.emit(f"Simulated exfil server started at http://127.0.0.1:{self.port}\n")
             # Serve forever in this thread. shutdown() will stop it.
@@ -992,7 +1038,8 @@ class ExfilServerWorker(QThread):
             self._server.shutdown()
             self._server.server_close()
             global simulated_exfil_server
-            simulated_exfil_server = None # Clear global reference
+            simulated_exfil_server = None  # Clear global reference
+
 
 class BruteForceWorker(QThread):
     update_output = pyqtSignal(str)
@@ -1005,13 +1052,13 @@ class BruteForceWorker(QThread):
         self.username = username
         self.wordlist_content = wordlist_content
         self.tool = tool
-        self.protocol = protocol # New: selected protocol
+        self.protocol = protocol  # New: selected protocol
         self.authorization_var = authorization_var
         self._is_running = True
         self._process = None
         self.temp_wordlist_path = None
-        self.output_buffer = [] # Buffer for output
-        self.buffer_threshold = 20 # Emit after 20 lines
+        self.output_buffer = []  # Buffer for output
+        self.buffer_threshold = 20  # Emit after 20 lines
 
     def _flush_buffer(self):
         if self.output_buffer:
@@ -1043,10 +1090,12 @@ class BruteForceWorker(QThread):
             if self.tool in ["NetExec", "CrackMapExec"]:
                 # Changed from -P to -p based on user feedback for flag compatibility.
                 # Standard usage often uses -P for password files, but using -p as requested.
-                command_parts = [executable_name, self.protocol, self.target_input_text, "-u", self.username, "-p", self.temp_wordlist_path, "--continue-on-success"]
+                command_parts = [executable_name, self.protocol, self.target_input_text, "-u", self.username, "-p",
+                                 self.temp_wordlist_path, "--continue-on-success"]
             elif self.tool == "Hydra":
                 # Hydra uses -l for single username, -P for password file
-                command_parts = ["hydra", "-l", self.username, "-P", self.temp_wordlist_path, self.target_input_text, self.protocol]
+                command_parts = ["hydra", "-l", self.username, "-P", self.temp_wordlist_path, self.target_input_text,
+                                 self.protocol]
             else:
                 self.update_output.emit(f"Error: Unsupported tool for brute force: {self.tool}\n")
                 self.update_status.emit("Brute force failed: Unsupported tool.")
@@ -1091,7 +1140,8 @@ class BruteForceWorker(QThread):
 
         except FileNotFoundError:
             self._flush_buffer()
-            self.update_output.emit(f"Error: '{executable_name}' command not found. Please ensure {self.tool} is installed and in your system's PATH.\n")
+            self.update_output.emit(
+                f"Error: '{executable_name}' command not found. Please ensure {self.tool} is installed and in your system's PATH.\n")
             self.update_status.emit(f"Error: {self.tool} not found.")
         except Exception as e:
             self._flush_buffer()
@@ -1114,6 +1164,7 @@ class BruteForceWorker(QThread):
             except subprocess.TimeoutExpired:
                 self._process.kill()
 
+
 class PasswordSprayWorker(QThread):
     update_output = pyqtSignal(str)
     update_status = pyqtSignal(str)
@@ -1125,13 +1176,13 @@ class PasswordSprayWorker(QThread):
         self.usernames_content = usernames_content
         self.password = password
         self.tool = tool
-        self.protocol = protocol # New: selected protocol
+        self.protocol = protocol  # New: selected protocol
         self.authorization_var = authorization_var
         self._is_running = True
         self._process = None
         self.temp_usernames_path = None
-        self.output_buffer = [] # Buffer for output
-        self.buffer_threshold = 20 # Emit after 20 lines
+        self.output_buffer = []  # Buffer for output
+        self.buffer_threshold = 20  # Emit after 20 lines
 
     def _flush_buffer(self):
         if self.output_buffer:
@@ -1163,10 +1214,12 @@ class PasswordSprayWorker(QThread):
             if self.tool in ["NetExec", "CrackMapExec"]:
                 # Changed from -U to -u based on user feedback for flag compatibility.
                 # Standard usage often uses -U for username files, but using -u as requested.
-                command_parts = [executable_name, self.protocol, self.target_input_text, "-u", self.temp_usernames_path, "-p", self.password]
+                command_parts = [executable_name, self.protocol, self.target_input_text, "-u",
+                                 self.temp_usernames_path, "-p", self.password]
             elif self.tool == "Hydra":
                 # Hydra uses -L for username file, -p for single password
-                command_parts = ["hydra", "-L", self.temp_usernames_path, "-p", self.password, self.target_input_text, self.protocol]
+                command_parts = ["hydra", "-L", self.temp_usernames_path, "-p", self.password,
+                                 self.target_input_text, self.protocol]
             else:
                 self.update_output.emit(f"Error: Unsupported tool for password spray: {self.tool}\n")
                 self.update_status.emit("Password spray failed: Unsupported tool.")
@@ -1211,7 +1264,8 @@ class PasswordSprayWorker(QThread):
 
         except FileNotFoundError:
             self._flush_buffer()
-            self.update_output.emit(f"Error: '{executable_name}' command not found. Please ensure {self.tool} is installed and in your system's PATH.\n")
+            self.update_output.emit(
+                f"Error: '{executable_name}' command not found. Please ensure {self.tool} is installed and in your system's PATH.\n")
             self.update_status.emit(f"Error: {self.tool} not found.")
         except Exception as e:
             self._flush_buffer()
@@ -1234,19 +1288,20 @@ class PasswordSprayWorker(QThread):
             except subprocess.TimeoutExpired:
                 self._process.kill()
 
+
 class BannerGrabbingWorker(QThread):
     update_status = pyqtSignal(str)
     grab_finished = pyqtSignal()
-    data_available = pyqtSignal() # New signal for queue data
+    data_available = pyqtSignal()  # New signal for queue data
 
-    TIMEOUT = 3 # Socket timeout for connection attempts
+    TIMEOUT = 3  # Socket timeout for connection attempts
 
     def __init__(self, target_ip_port_list, authorization_var):
         super().__init__()
-        self.target_ip_port_list = target_ip_port_list # List of (ip, port) tuples
+        self.target_ip_port_list = target_ip_port_list  # List of (ip, port) tuples
         self.authorization_var = authorization_var
         self._is_running = True
-        self.results_queue = Queue() # Thread-safe queue for results to GUI
+        self.results_queue = Queue()  # Thread-safe queue for results to GUI
 
     def _grab_banner_from_socket(self, host, port):
         """Attempts to connect to a single port and grab its banner."""
@@ -1265,17 +1320,17 @@ class BannerGrabbingWorker(QThread):
             self.data_available.emit()
 
             # Send common service requests if applicable
-            if port == 80: # HTTP
+            if port == 80:  # HTTP
                 request = b"GET / HTTP/1.0\r\nHost: " + host.encode() + b"\r\n\r\n"
                 sock.sendall(request)
                 self.results_queue.put("  Sent HTTP GET request.\n")
                 self.data_available.emit()
-            elif port == 21: # FTP
-                pass # FTP server usually sends banner on connect
-            elif port == 22: # SSH
-                pass # SSH server usually sends banner on connect
-            elif port == 23: # Telnet
-                pass # Telnet server usually sends banner on connect
+            elif port == 21:  # FTP
+                pass  # FTP server usually sends banner on connect
+            elif port == 22:  # SSH
+                pass  # SSH server usually sends banner on connect
+            elif port == 23:  # Telnet
+                pass  # Telnet server usually sends banner on connect
             else:
                 self.results_queue.put("  No specific request sent for this port type.\n")
                 self.data_available.emit()
@@ -1304,7 +1359,8 @@ class BannerGrabbingWorker(QThread):
 
             if self._is_running:
                 if banner_data:
-                    self.results_queue.put(f"\n  --- Banner Received from {host}:{port} ({len(banner_data)} bytes) ---\n")
+                    self.results_queue.put(
+                        f"\n  --- Banner Received from {host}:{port} ({len(banner_data)} bytes) ---\n")
                     # The actual banner content was already emitted in chunks above
                     self.results_queue.put("\n  --- End of Banner ---\n")
                 else:
@@ -1325,7 +1381,7 @@ class BannerGrabbingWorker(QThread):
         finally:
             if sock:
                 sock.close()
-            self.data_available.emit() # Ensure signal is emitted for final messages
+            self.data_available.emit()  # Ensure signal is emitted for final messages
 
     def run(self):
         if not self.authorization_var:
@@ -1362,9 +1418,8 @@ class BannerGrabbingWorker(QThread):
             self._grab_banner_from_socket(ip, port)
             if not self._is_running:
                 break
-            self.results_queue.put("\n" + "="*50 + "\n")
+            self.results_queue.put("\n" + "=" * 50 + "\n")
             self.data_available.emit()
-
 
         if self._is_running:
             self.results_queue.put("\n--- Banner Grabbing Completed ---\n")
@@ -1381,10 +1436,11 @@ class BannerGrabbingWorker(QThread):
         # No subprocess to terminate here as it's a socket operation
         # The socket will close automatically or due to timeout/error
 
-class SecretsdumpWorker(QThread): # Renamed from MimikatzWorker
+
+class SecretsdumpWorker(QThread):  # Renamed from MimikatzWorker
     update_output = pyqtSignal(str)
     update_status = pyqtSignal(str)
-    secretsdump_finished = pyqtSignal() # Renamed signal
+    secretsdump_finished = pyqtSignal()  # Renamed signal
 
     def __init__(self, target_ip, username, password, domain, use_hashes, additional_options, authorization_var):
         super().__init__()
@@ -1397,8 +1453,8 @@ class SecretsdumpWorker(QThread): # Renamed from MimikatzWorker
         self.authorization_var = authorization_var
         self._is_running = True
         self._process = None
-        self.output_buffer = [] # Buffer for output
-        self.buffer_threshold = 20 # Emit after 20 lines
+        self.output_buffer = []  # Buffer for output
+        self.buffer_threshold = 20  # Emit after 20 lines
 
     def _flush_buffer(self):
         if self.output_buffer:
@@ -1449,7 +1505,8 @@ class SecretsdumpWorker(QThread): # Renamed from MimikatzWorker
 
         try:
             # Use shell=False and pass command as list for robustness
-            self._process = subprocess.Popen(command_parts, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+            self._process = subprocess.Popen(command_parts, stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE, text=True, shell=False)
             while self._is_running:
                 if self._process.poll() is not None:
                     break
@@ -1466,14 +1523,15 @@ class SecretsdumpWorker(QThread): # Renamed from MimikatzWorker
             if stderr:
                 self.output_buffer.append(f"\n--- Error Output ---\n{stderr}\n")
 
-            self._flush_buffer() # Flush any remaining output
+            self._flush_buffer()  # Flush any remaining output
             return_code = self._process.returncode
             self.update_output.emit(f"\n--- secretsdump.py Finished with Return Code: {return_code} ---\n")
             self.update_status.emit(f"secretsdump.py finished (code: {return_code}).")
 
         except FileNotFoundError:
             self._flush_buffer()
-            self.update_output.emit(f"Error: 'secretsdump.py' command not found.\nEnsure Impacket is installed and 'secretsdump.py' is in your system's PATH.\n")
+            self.update_output.emit(
+                f"Error: 'secretsdump.py' command not found.\nEnsure Impacket is installed and 'secretsdump.py' is in your system's PATH.\n")
             self.update_status.emit("Error: secretsdump.py not found.")
         except Exception as e:
             self._flush_buffer()
@@ -1494,11 +1552,12 @@ class SecretsdumpWorker(QThread): # Renamed from MimikatzWorker
             except subprocess.TimeoutExpired:
                 self._process.kill()
 
+
 # --- Main Application Class (QMainWindow) ---
 class NetworkPenTestTool(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Red Raven") # Updated Window Title
+        self.setWindowTitle("Red Raven")  # Updated Window Title
         # Initial geometry set here for the main window, this will be overridden by resize in init_ui
         self.setGeometry(100, 100, 1000, 750)
 
@@ -1511,11 +1570,11 @@ class NetworkPenTestTool(QMainWindow):
         self.banner_grabbing_running = False
         self.password_dumping_running = False
         self.network_discovery_running = False
-        self._resizing = False # For custom window resizing
-        self._resize_edge = None # For custom window resizing
-        self._original_mouse_pos = QPoint() # For custom window resizing
-        self._original_geometry = self.geometry() # For custom window resizing
-        self._resize_edge_margin = 5 # Pixels from edge to detect resize
+        self._resizing = False  # For custom window resizing
+        self._resize_edge = None  # For custom window resizing
+        self._original_mouse_pos = QPoint()  # For custom window resizing
+        self._original_geometry = self.geometry()  # For custom window resizing
+        self._resize_edge_margin = 5  # Pixels from edge to detect resize
 
         # Initialize worker references to None
         self.scan_worker = None
@@ -1527,7 +1586,7 @@ class NetworkPenTestTool(QMainWindow):
         self.secretsdump_worker = None
         self.dummy_file_worker = None
         self.exfil_worker = None
-        self.exfil_server_worker = None # This one should persist across tab changes if started
+        self.exfil_server_worker = None  # This one should persist across tab changes if started
 
         # Initialize UI element references to None to prevent AttributeError on early access
         # These will be assigned in _create_*_widgets methods
@@ -1555,7 +1614,7 @@ class NetworkPenTestTool(QMainWindow):
         self.dummy_file_path = "dummy_200MB_file.bin"
         self.dummy_file_size_mb = 200
         self.authorization_checked = False
-        self.exfil_uploaded_file_path = None # New attribute for uploaded exfil file
+        self.exfil_uploaded_file_path = None  # New attribute for uploaded exfil file
 
         self.rockyou_wordlist_path = "rockyou.txt"
         self._create_dummy_rockyou_file()
@@ -1578,16 +1637,15 @@ class NetworkPenTestTool(QMainWindow):
         exfil_server_signals.update_output.connect(self.update_exfil_output)
 
         # Setup timer for port scan results processing
-        self.port_scan_results_timer.setInterval(50) # Update every 50 milliseconds (reduced from 100)
+        self.port_scan_results_timer.setInterval(50)  # Update every 50 milliseconds (reduced from 100)
         self.port_scan_results_timer.timeout.connect(self._process_scan_results_from_queue)
 
         # Setup timer for banner grabbing results processing
-        self.banner_grab_results_timer.setInterval(50) # Update every 50 milliseconds
+        self.banner_grab_results_timer.setInterval(50)  # Update every 50 milliseconds
         self.banner_grab_results_timer.timeout.connect(self._process_banner_grab_results_from_queue)
 
         # Set the window to accept mouse tracking events even without a button pressed
         self.setMouseTracking(True)
-
 
     # --- Custom Window Resizing Methods ---
     def mousePressEvent(self, event):
@@ -1612,7 +1670,7 @@ class NetworkPenTestTool(QMainWindow):
         if self._resizing:
             # Calculate the change in Y position
             delta_y = int(event.globalPosition().y() - self._original_mouse_pos.y())
-            
+
             # Get original window dimensions
             original_x = self._original_geometry.x()
             original_y = self._original_geometry.y()
@@ -1633,7 +1691,7 @@ class NetworkPenTestTool(QMainWindow):
                 new_height = original_height - delta_y
 
             # Ensure minimum height
-            min_height = 200 # Set a reasonable minimum height for the window
+            min_height = 200  # Set a reasonable minimum height for the window
             if new_height < min_height:
                 new_height = min_height
                 # If resizing from top and hit min_height, adjust Y back
@@ -1646,9 +1704,9 @@ class NetworkPenTestTool(QMainWindow):
             # If not resizing, change cursor based on hover over resizeable edges
             edge = self._get_resize_edge(event.pos())
             if edge in ["top", "bottom"]:
-                self.setCursor(Qt.CursorShape.SizeVerCursor) # Vertical resize cursor
+                self.setCursor(Qt.CursorShape.SizeVerCursor)  # Vertical resize cursor
             else:
-                self.setCursor(Qt.CursorShape.ArrowCursor) # Default arrow cursor
+                self.setCursor(Qt.CursorShape.ArrowCursor)  # Default arrow cursor
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -1658,7 +1716,7 @@ class NetworkPenTestTool(QMainWindow):
         if event.button() == Qt.MouseButton.LeftButton and self._resizing:
             self._resizing = False
             self._resize_edge = None
-            self.setCursor(Qt.CursorShape.ArrowCursor) # Reset cursor
+            self.setCursor(Qt.CursorShape.ArrowCursor)  # Reset cursor
         super().mouseReleaseEvent(event)
 
     def _get_resize_edge(self, pos: QPoint):
@@ -1674,7 +1732,6 @@ class NetworkPenTestTool(QMainWindow):
         elif abs(pos.y() - rect.bottom()) <= self._resize_edge_margin:
             return "bottom"
         return None
-
 
     def _create_dummy_rockyou_file(self):
         """Creates a small dummy rockyou.txt file if it doesn't exist."""
@@ -1703,7 +1760,7 @@ class NetworkPenTestTool(QMainWindow):
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.setStyleSheet(f"QMessageBox {{ background-color: {self.dark_bg_color.name()}; }}"
                               f"QMessageBox QLabel {{ color: {self.green_text_color.name()}; }}"
-                              f"QMessageBox QPushButton {{ background-color: {QColor('#2ECC71').name()}; color: {self.dark_bg_color.name()}; border-radius: 5px; padding: 5px 10px; }}" # Green for Ok
+                              f"QMessageBox QPushButton {{ background-color: {QColor('#2ECC71').name()}; color: {self.dark_bg_color.name()}; border-radius: 5px; padding: 5px 10px; }}"  # Green for Ok
                               f"QMessageBox QPushButton:hover {{ background-color: {QColor('#27AE60').name()}; }}")
         return msg_box.exec()
 
@@ -1716,16 +1773,16 @@ class NetworkPenTestTool(QMainWindow):
         msg_box.setDefaultButton(QMessageBox.StandardButton.No)
         msg_box.setStyleSheet(f"QMessageBox {{ background-color: {self.dark_bg_color.name()}; }}"
                               f"QMessageBox QLabel {{ color: {self.green_text_color.name()}; }}"
-                              f"QMessageBox QPushButton[text=\"&Yes\"] {{ background-color: {QColor('#2ECC71').name()}; color: {self.dark_bg_color.name()}; border-radius: 5px; padding: 5px 10px; }}" # Yes button green
+                              f"QMessageBox QPushButton[text=\"&Yes\"] {{ background-color: {QColor('#2ECC71').name()}; color: {self.dark_bg_color.name()}; border-radius: 5px; padding: 5px 10px; }}"  # Yes button green
                               f"QMessageBox QPushButton[text=\"&Yes\"]:hover {{ background-color: {QColor('#27AE60').name()}; }}"
-                              f"QMessageBox QPushButton[text=\"&No\"] {{ background-color: {QColor('#E74C3C').name()}; color: {self.dark_bg_color.name()}; border-radius: 5px; padding: 5px 10px; }}" # No button red
+                              f"QMessageBox QPushButton[text=\"&No\"] {{ background-color: {QColor('#E74C3C').name()}; color: {self.dark_bg_color.name()}; border-radius: 5px; padding: 5px 10px; }}"  # No button red
                               f"QMessageBox QPushButton[text=\"&No\"]:hover {{ background-color: {QColor('#C0392B').name()}; }}")
         return msg_box.exec() == QMessageBox.StandardButton.Yes
 
     def init_ui(self):
         # Set initial window size for better cross-platform behavior and resizability
-        self.resize(1024, 768) # Set a reasonable initial size
-        self.setMinimumSize(800, 600) # Set a minimum size to prevent content from being too cramped
+        self.resize(1024, 768)  # Set a reasonable initial size
+        self.setMinimumSize(800, 600)  # Set a minimum size to prevent content from being too cramped
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -1738,7 +1795,7 @@ class NetworkPenTestTool(QMainWindow):
         self.medium_bg_color = QColor("#34495E")
         self.input_bg_color = QColor("#4A627A")
         self.orange_color = QColor("#FFA500")
-        self.red_raven_color = QColor("#E74C3C") # Specific red for Red Raven title
+        self.red_raven_color = QColor("#E74C3C")  # Specific red for Red Raven title
 
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.WindowText, self.green_text_color)
@@ -1752,9 +1809,9 @@ class NetworkPenTestTool(QMainWindow):
                            f"QFrame {{ background-color: {self.medium_bg_color.name()}; border-radius: 8px; }}"
                            f"QLabel {{ color: {self.green_text_color.name()}; }}"
                            f"QLabel#creditLabel {{ color: {self.orange_color.name()}; }}"
-                           f"QLabel#disclaimerLabel {{ padding: 10px; }}" # Increased padding
-                           f"QLabel#redRavenTitle {{ color: {self.red_raven_color.name()}; }}" # Style for Red Raven title
-                           f"QLabel#ravenIconLabel {{ color: {self.red_raven_color.name()}; }}" # Style for the raven emoji
+                           f"QLabel#disclaimerLabel {{ padding: 10px; }}"  # Increased padding
+                           f"QLabel#redRavenTitle {{ color: {self.red_raven_color.name()}; }}"  # Style for Red Raven title
+                           f"QLabel#ravenIconLabel {{ color: {self.red_raven_color.name()}; }}"  # Style for the raven emoji
                            f"QLineEdit {{ background-color: {self.input_bg_color.name()}; color: {self.green_text_color.name()}; border: 1px solid {self.medium_bg_color.name()}; border-radius: 5px; padding: 5px; }}"
                            f"QTextEdit {{ background-color: {self.input_bg_color.name()}; color: {self.green_text_color.name()}; border: 1px solid {self.medium_bg_color.name()}; border-radius: 5px; padding: 5px; }}"
                            f"QComboBox {{ background-color: {self.input_bg_color.name()}; color: {self.green_text_color.name()}; border: 1px solid {self.medium_bg_color.name()}; border-radius: 5px; padding: 5px; }}"
@@ -1779,14 +1836,14 @@ class NetworkPenTestTool(QMainWindow):
 
                            # Ensure other action buttons inherit the default green or are explicitly set if needed
                            # (Removed individual overrides for these as they now inherit the general QPushButton style)
-                          )
+                           )
 
         # --- Header Frame ---
         header_frame = QFrame(self)
         header_frame.setFrameShape(QFrame.Shape.NoFrame)
         header_frame.setContentsMargins(20, 20, 20, 20)
         header_layout = QVBoxLayout(header_frame)
-        header_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter) # Centered horizontally
+        header_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)  # Centered horizontally
 
         # Add a small stretch at the very top to push content down slightly
         header_layout.addStretch(1)
@@ -1804,25 +1861,26 @@ class NetworkPenTestTool(QMainWindow):
 
         # Title and Icon Layout - Centered
         title_icon_layout = QHBoxLayout()
-        title_icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter) # Ensures content within this layout is centered
+        title_icon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Ensures content within this layout is centered
 
         # --- Red Raven Icon (Image) ---
         self.raven_icon_label = QLabel()
         # Attempt to load "Raven.png", scale it, and set it.
         # If "Raven.png" is not found, it will fall back to a placeholder text.
-        raven_pixmap = QPixmap("assets/Raven.png")
+        raven_pixmap = QPixmap("Raven.png")
         if raven_pixmap.isNull():
-            self.raven_icon_label.setText("[RAVEN]") # Placeholder text if image not found
-            self.raven_icon_label.setFont(QFont("Arial", 32)) # Set font for placeholder
+            self.raven_icon_label.setText("[RAVEN]")  # Placeholder text if image not found
+            self.raven_icon_label.setFont(QFont("Arial", 32))  # Set font for placeholder
             self.raven_icon_label.setStyleSheet(f"QLabel#ravenIconLabel {{ color: {self.red_raven_color.name()}; }}")
         else:
-            self.raven_icon_label.setPixmap(raven_pixmap.scaledToHeight(62, Qt.TransformationMode.SmoothTransformation)) # Adjust height as needed, smooth transformation for better quality
-            self.raven_icon_label.setObjectName("ravenIconLabel") # Object name for specific styling if image is loaded
+            self.raven_icon_label.setPixmap(
+                raven_pixmap.scaledToHeight(62, Qt.TransformationMode.SmoothTransformation))  # Adjust height as needed, smooth transformation for better quality
+            self.raven_icon_label.setObjectName("ravenIconLabel")  # Object name for specific styling if image is loaded
 
         title_icon_layout.addWidget(self.raven_icon_label)
 
         title_label = QLabel("<b>Red Raven</b>")
-        title_label.setObjectName("redRavenTitle") # Object name for specific styling
+        title_label.setObjectName("redRavenTitle")  # Object name for specific styling
         title_font = QFont("Arial", 28, QFont.Weight.Bold)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1849,22 +1907,23 @@ class NetworkPenTestTool(QMainWindow):
         )
         self.external_tools_info_label.setObjectName("external_tools_info_label")
         self.external_tools_info_label.setFont(QFont("Arial", 10))
-        self.external_tools_info_label.setStyleSheet(f"QLabel#external_tools_info_label {{ color: {self.orange_color.name()}; padding: 10px; border: 1px solid {self.orange_color.name()}; border-radius: 5px; margin-top: 10px; }}")
+        self.external_tools_info_label.setStyleSheet(
+            f"QLabel#external_tools_info_label {{ color: {self.orange_color.name()}; padding: 10px; border: 1px solid {self.orange_color.name()}; border-radius: 5px; margin-top: 10px; }}")
         self.external_tools_info_label.setWordWrap(True)
-        self.external_tools_info_label.setFixedWidth(700) # Set a fixed width to prevent cramping (adjust as needed)
+        self.external_tools_info_label.setFixedWidth(700)  # Set a fixed width to prevent cramping (adjust as needed)
         header_layout.addWidget(self.external_tools_info_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Add a final stretch at the bottom of the header frame to ensure content is not squashed against the bottom
         header_layout.addStretch(1)
 
         # Add header_frame to main_layout with a stretch factor
-        self.main_layout.addWidget(header_frame, 1) # Give header 1 unit of stretch
+        self.main_layout.addWidget(header_frame, 1)  # Give header 1 unit of stretch
 
         # --- Main Content Frame (Tab Widget) ---
         self.notebook = QTabWidget(self)
         self.notebook.setFont(QFont("Arial", 12))
         # Add notebook to main_layout with a larger stretch factor
-        self.main_layout.addWidget(self.notebook, 3) # Give notebook 3 units of stretch
+        self.main_layout.addWidget(self.notebook, 3)  # Give notebook 3 units of stretch
 
         # Connect the tab changed signal
         self.notebook.currentChanged.connect(self.on_tab_changed)
@@ -1912,7 +1971,8 @@ class NetworkPenTestTool(QMainWindow):
         # --- Status Bar ---
         self.status_bar = QLabel("Ready.")
         self.status_bar.setFont(QFont("Arial", 10))
-        self.status_bar.setStyleSheet(f"QLabel {{ background-color: {self.medium_bg_color.name()}; border: 1px solid {self.medium_bg_color.name()}; padding: 5px; border-radius: 8px; }}")
+        self.status_bar.setStyleSheet(
+            f"QLabel {{ background-color: {self.medium_bg_color.name()}; border: 1px solid {self.medium_bg_color.name()}; padding: 5px; border-radius: 8px; }}")
         self.main_layout.addWidget(self.status_bar)
 
         self.update_authorization_state()
@@ -1923,7 +1983,8 @@ class NetworkPenTestTool(QMainWindow):
         layout.setSpacing(10)
 
         row = 0
-        layout.addWidget(QLabel("Target IP/Hostname/CIDR (e.g., 192.168.1.1, example.com, 192.168.1.0/24):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Target IP/Hostname/CIDR (e.g., 192.168.1.1, example.com, 192.168.1.0/24):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.target_entry = QLineEdit("127.0.0.1")
         self.target_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.target_entry, row, 1)
@@ -1935,10 +1996,11 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(self.port_range_entry, row, 1)
         row += 1
 
-        layout.addWidget(QLabel("Number of Threads (for Python scanner):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Number of Threads (for Python scanner):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.threads_entry = QLineEdit("100")
         self.threads_entry.setFont(QFont("Arial", 12))
-        self.threads_entry.setValidator(QIntValidator(1, 200)) # Limit threads to a more reasonable range for stability
+        self.threads_entry.setValidator(QIntValidator(1, 200))  # Limit threads to a more reasonable range for stability
         layout.addWidget(self.threads_entry, row, 1)
         row += 1
 
@@ -1949,7 +2011,7 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(self.use_python_scanner_checkbox, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
 
-        self.use_nmap_checkbox = QCheckBox("Use Nmap for Scan (Requires Nmap installed)") # Updated text
+        self.use_nmap_checkbox = QCheckBox("Use Nmap for Scan (Requires Nmap installed)")  # Updated text
         self.use_nmap_checkbox.setFont(QFont("Arial", 10))
         self.use_nmap_checkbox.setChecked(False)
         self.use_nmap_checkbox.toggled.connect(self.toggle_nmap_usage)
@@ -1993,21 +2055,23 @@ class NetworkPenTestTool(QMainWindow):
         layout.setSpacing(10)
 
         row = 0
-        #info_font = QFont("Arial", 10, italic=True)
-        #info_label = QLabel("This tab performs network discovery (ARP scan) using Scapy to find active hosts on your local network. It requires Scapy to be installed (e.g., `pip install scapy`) and may need elevated privileges (run as administrator/root).")
-        #info_label.setFont(info_font)
-        #info_label.setStyleSheet(f"QLabel {{ color: {self.orange_color.name()}; padding: 5px; border: 1px solid {self.orange_color.name()}; border-radius: 5px; margin-bottom: 10px; }}")
-        #info_label.setWordWrap(True)
-        #layout.addWidget(info_label, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
+        # info_font = QFont("Arial", 10, italic=True)
+        # info_label = QLabel("This tab performs network discovery (ARP scan) using Scapy to find active hosts on your local network. It requires Scapy to be installed (e.g., `pip install scapy`) and may need elevated privileges (run as administrator/root).")
+        # info_label.setFont(info_font)
+        # info_label.setStyleSheet(f"QLabel {{ color: {self.orange_color.name()}; padding: 5px; border: 1px solid {self.orange_color.name()}; border-radius: 5px; margin-bottom: 10px; }}")
+        # info_label.setWordWrap(True)
+        # layout.addWidget(info_label, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
 
-        layout.addWidget(QLabel("Target IP/Range (e.g., 192.168.1.0/24 or 192.168.1.1):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Target IP/Range (e.g., 192.168.1.0/24 or 192.168.1.1):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.network_discovery_target_entry = QLineEdit("192.168.1.0/24")
         self.network_discovery_target_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.network_discovery_target_entry, row, 1)
         row += 1
 
-        layout.addWidget(QLabel("Save to PCAP File (Optional, e.g., discovery.pcap):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Save to PCAP File (Optional, e.g., discovery.pcap):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.network_discovery_pcap_entry = QLineEdit("")
         self.network_discovery_pcap_entry.setPlaceholderText("Leave empty to not save")
         self.network_discovery_pcap_entry.setFont(QFont("Arial", 12))
@@ -2037,7 +2101,8 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(button_frame_discovery, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
         row += 1
 
-        layout.addWidget(QLabel("Discovery Results:"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("Discovery Results:"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.network_discovery_results_text = QTextEdit()
         self.network_discovery_results_text.setFont(QFont("Monospace", 10))
         self.network_discovery_results_text.setReadOnly(True)
@@ -2051,7 +2116,8 @@ class NetworkPenTestTool(QMainWindow):
         layout.setSpacing(10)
 
         row = 0
-        layout.addWidget(QLabel("Target IP/Range (e.g., 192.168.1.10 or 192.168.1.0/24):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Target IP/Range (e.g., 192.168.1.10 or 192.168.1.0/24):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.netexec_target_entry = QLineEdit("127.0.0.1")
         self.netexec_target_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.netexec_target_entry, row, 1)
@@ -2061,19 +2127,20 @@ class NetworkPenTestTool(QMainWindow):
         self.netexec_protocols = [
             "smb", "ssh", "winrm", "mssql", "ldap", "rdp", "vnc"
         ]
-        self.netexec_protocol_combobox = QComboBox() # Renamed to avoid conflict
+        self.netexec_protocol_combobox = QComboBox()  # Renamed to avoid conflict
         self.netexec_protocol_combobox.addItems(self.netexec_protocols)
         self.netexec_protocol_combobox.setFont(QFont("Arial", 12))
         self.netexec_protocol_combobox.currentTextChanged.connect(self.on_netexec_protocol_select)
         layout.addWidget(self.netexec_protocol_combobox, row, 1)
         row += 1
 
-        layout.addWidget(QLabel("NetExec Command (Edit if needed, <target_ip> will be replaced):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.netexec_command_edit = QLineEdit("netexec smb <target_ip> --shares") # Changed to QLineEdit for editing
+        layout.addWidget(QLabel("NetExec Command (Edit if needed, <target_ip> will be replaced):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.netexec_command_edit = QLineEdit("netexec smb <target_ip> --shares")  # Changed to QLineEdit for editing
         self.netexec_command_edit.setFont(QFont("Monospace", 10))
         layout.addWidget(self.netexec_command_edit, row, 1)
         row += 1
-        self.on_netexec_protocol_select() # Initialize command text based on default protocol
+        self.on_netexec_protocol_select()  # Initialize command text based on default protocol
 
         button_frame_netexec = QFrame()
         button_frame_netexec.setFrameShape(QFrame.Shape.NoFrame)
@@ -2097,7 +2164,8 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(button_frame_netexec, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
         row += 1
 
-        layout.addWidget(QLabel("NetExec Output:"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("NetExec Output:"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.netexec_output_text = QTextEdit()
         self.netexec_output_text.setFont(QFont("Monospace", 10))
         self.netexec_output_text.setReadOnly(True)
@@ -2111,13 +2179,15 @@ class NetworkPenTestTool(QMainWindow):
         layout.setSpacing(10)
 
         row = 0
-        layout.addWidget(QLabel("Target IP/Host (e.g., 192.168.1.10 or 192.168.1.0/24):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Target IP/Host (e.g., 192.168.1.10 or 192.168.1.0/24):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.brute_force_target_entry = QLineEdit("127.0.0.1")
         self.brute_force_target_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.brute_force_target_entry, row, 1)
         row += 1
 
-        layout.addWidget(QLabel("Username (single username for brute force):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Username (single username for brute force):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.brute_force_username_entry = QLineEdit("admin")
         self.brute_force_username_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.brute_force_username_entry, row, 1)
@@ -2138,12 +2208,13 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(self.brute_force_protocol_combobox, row, 1)
         row += 1
 
-        layout.addWidget(QLabel("Command (Edit if needed, <target_ip>, <username>, <wordlist_file> will be replaced):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.brute_force_command_edit = QLineEdit() # Editable command
+        layout.addWidget(QLabel("Command (Edit if needed, <target_ip>, <username>, <wordlist_file> will be replaced):"),
+                         row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.brute_force_command_edit = QLineEdit()  # Editable command
         self.brute_force_command_edit.setFont(QFont("Monospace", 10))
         layout.addWidget(self.brute_force_command_edit, row, 1)
         row += 1
-        self.on_brute_force_tool_select() # Initialize command text based on default tool
+        self.on_brute_force_tool_select()  # Initialize command text based on default tool
 
         wordlist_group_label = QLabel("Wordlist Options:")
         wordlist_group_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
@@ -2157,7 +2228,8 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(self.use_rockyou_checkbox, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
 
-        layout.addWidget(QLabel("Paste Wordlist:"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("Paste Wordlist:"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.brute_force_paste_wordlist_text = QTextEdit()
         self.brute_force_paste_wordlist_text.setPlaceholderText("Enter passwords, one per line (overrides default rockyou.txt)")
         self.brute_force_paste_wordlist_text.setFont(QFont("Monospace", 10))
@@ -2209,14 +2281,15 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(button_frame_brute_force, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
         row += 1
 
-        layout.addWidget(QLabel("Brute Force Output:"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("Brute Force Output:"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.brute_force_output_text = QTextEdit()
         self.brute_force_output_text.setFont(QFont("Monospace", 10))
         self.brute_force_output_text.setReadOnly(True)
         layout.addWidget(self.brute_force_output_text, row, 1)
 
         layout.setRowStretch(row, 1)
-        self.on_brute_force_wordlist_option_changed() # Initialize state of wordlist options
+        self.on_brute_force_wordlist_option_changed()  # Initialize state of wordlist options
 
     def _create_password_spray_widgets(self, parent_widget):
         layout = QGridLayout(parent_widget)
@@ -2224,13 +2297,15 @@ class NetworkPenTestTool(QMainWindow):
         layout.setSpacing(10)
 
         row = 0
-        layout.addWidget(QLabel("Target IP/Host (e.g., 192.168.1.10 or 192.168.1.0/24):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Target IP/Host (e.g., 192.168.1.10 or 192.168.1.0/24):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.password_spray_target_entry = QLineEdit("127.0.0.1")
         self.password_spray_target_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.password_spray_target_entry, row, 1)
         row += 1
 
-        layout.addWidget(QLabel("Password (single password for spraying):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Password (single password for spraying):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.password_spray_password_entry = QLineEdit("Summer2024!")
         self.password_spray_password_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.password_spray_password_entry, row, 1)
@@ -2251,19 +2326,21 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(self.password_spray_protocol_combobox, row, 1)
         row += 1
 
-        layout.addWidget(QLabel("Command (Edit if needed, <target_ip>, <password>, <usernames_file> will be replaced):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.password_spray_command_edit = QLineEdit() # Editable command
+        layout.addWidget(QLabel("Command (Edit if needed, <target_ip>, <password>, <usernames_file> will be replaced):"),
+                         row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.password_spray_command_edit = QLineEdit()  # Editable command
         self.password_spray_command_edit.setFont(QFont("Monospace", 10))
         layout.addWidget(self.password_spray_command_edit, row, 1)
         row += 1
-        self.on_password_spray_tool_select() # Initialize command text based on default tool
+        self.on_password_spray_tool_select()  # Initialize command text based on default tool
 
         usernames_group_label = QLabel("Usernames List:")
         usernames_group_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         layout.addWidget(usernames_group_label, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
 
-        layout.addWidget(QLabel("Paste Usernames:"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("Paste Usernames:"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.password_spray_paste_usernames_text = QTextEdit()
         self.password_spray_paste_usernames_text.setPlaceholderText("Enter usernames, one per line (e.g., admin, user1, johndoe)")
         self.password_spray_paste_usernames_text.setFont(QFont("Monospace", 10))
@@ -2315,15 +2392,16 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(button_frame_password_spray, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
         row += 1
 
-        layout.addWidget(QLabel("Password Spray Output:"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("Password Spray Output:"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.password_spray_output_text = QTextEdit()
         self.password_spray_output_text.setFont(QFont("Monospace", 10))
         self.password_spray_output_text.setReadOnly(True)
-        layout.addWidget(self.password_spray_output_text, row, 1, 3, 1) # Increased row span to 3 for larger output
-        row += 3 # Adjust row counter for the increased span
+        layout.addWidget(self.password_spray_output_text, row, 1, 3, 1)  # Increased row span to 3 for larger output
+        row += 3  # Adjust row counter for the increased span
 
-        layout.setRowStretch(row, 1) # Ensure this row stretches
-        self.on_password_spray_usernames_option_changed() # Initialize state of usernames options
+        layout.setRowStretch(row, 1)  # Ensure this row stretches
+        self.on_password_spray_usernames_option_changed()  # Initialize state of usernames options
 
     def _create_banner_grabbing_widgets(self, parent_widget):
         layout = QGridLayout(parent_widget)
@@ -2332,7 +2410,8 @@ class NetworkPenTestTool(QMainWindow):
 
         row = 0
         # Updated label to indicate CIDR/hostname support
-        layout.addWidget(QLabel("Target IP/Hostname/CIDR (e.g., 192.168.1.1, example.com, 192.168.1.0/24):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Target IP/Hostname/CIDR (e.g., 192.168.1.1, example.com, 192.168.1.0/24):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.banner_grab_target_entry = QLineEdit("127.0.0.1")
         self.banner_grab_target_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.banner_grab_target_entry, row, 1)
@@ -2368,7 +2447,8 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(button_frame_banner_grab, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
         row += 1
 
-        layout.addWidget(QLabel("Banner Grabbing Output:"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("Banner Grabbing Output:"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.banner_grab_output_text = QTextEdit()
         self.banner_grab_output_text.setFont(QFont("Monospace", 10))
         self.banner_grab_output_text.setReadOnly(True)
@@ -2382,12 +2462,14 @@ class NetworkPenTestTool(QMainWindow):
         layout.setSpacing(10)
 
         row = 0
-        layout.addWidget(QLabel("Password Dumping (secretsdump.py):"), row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Password Dumping (secretsdump.py):"), row, 0, 1, 2,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
 
         # REMOVED: info_label about secretsdump.py
 
-        layout.addWidget(QLabel("Target IP/Hostname (e.g., 192.168.1.100):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Target IP/Hostname (e.g., 192.168.1.100):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.secretsdump_target_entry = QLineEdit("127.0.0.1")
         self.secretsdump_target_entry.setFont(QFont("Arial", 12))
         layout.addWidget(self.secretsdump_target_entry, row, 1)
@@ -2420,7 +2502,8 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(self.secretsdump_password_entry, row, 1)
         row += 1
 
-        layout.addWidget(QLabel("Additional Options (e.g., --just-dc-ntlm):"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel("Additional Options (e.g., --just-dc-ntlm):"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         self.secretsdump_options_entry = QLineEdit("")
         self.secretsdump_options_entry.setPlaceholderText("--just-dc-ntlm")
         self.secretsdump_options_entry.setFont(QFont("Arial", 12))
@@ -2450,14 +2533,15 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(button_frame_dump, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
         row += 1
 
-        layout.addWidget(QLabel("secretsdump.py Output:"), row, 0, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("secretsdump.py Output:"), row, 0,
+                         alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.password_dump_output_text = QTextEdit()
         self.password_dump_output_text.setFont(QFont("Monospace", 10))
         self.password_dump_output_text.setReadOnly(True)
         layout.addWidget(self.password_dump_output_text, row, 1)
 
         layout.setRowStretch(row, 1)
-        self.on_secretsdump_auth_type_changed() # Initialize password/hash field based on checkbox state
+        self.on_secretsdump_auth_type_changed()  # Initialize password/hash field based on checkbox state
 
     def _create_exfil_widgets(self, parent_widget):
         layout = QGridLayout(parent_widget)
@@ -2465,7 +2549,8 @@ class NetworkPenTestTool(QMainWindow):
         layout.setSpacing(10)
 
         row = 0
-        layout.addWidget(QLabel(f"Dummy File: {self.dummy_file_path} ({self.dummy_file_size_mb} MB)"), row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel(f"Dummy File: {self.dummy_file_path} ({self.dummy_file_size_mb} MB)"), row, 0, 1, 2,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
 
         self.create_dummy_button = QPushButton("Create Dummy File")
@@ -2491,9 +2576,11 @@ class NetworkPenTestTool(QMainWindow):
         layout.addWidget(server_section_label, row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
 
-        layout.addWidget(QLabel(f"Server Address: 127.0.0.1:{SIMULATED_EXFIL_SERVER_PORT}"), row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel(f"Server Address: 127.0.0.1:{SIMULATED_EXFIL_SERVER_PORT}"), row, 0, 1, 2,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
-        layout.addWidget(QLabel(f"Files will be saved to: {SIMULATED_EXFIL_RECEIVED_DIR}"), row, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(QLabel(f"Files will be saved to: {SIMULATED_EXFIL_RECEIVED_DIR}"), row, 0, 1, 2,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
         row += 1
 
         button_frame_server = QFrame()
@@ -2596,7 +2683,6 @@ class NetworkPenTestTool(QMainWindow):
         # Initial call to set visibility based on default selection
         self.on_exfil_type_select()
 
-
     def on_tab_changed(self, index):
         """
         Slot to handle tab changes. Stops any running worker on the previously active tab.
@@ -2606,7 +2692,7 @@ class NetworkPenTestTool(QMainWindow):
 
         # Update status bar based on current tab (optional, but good for feedback)
         tab_name = self.notebook.tabText(index)
-        if self.status_bar: # Check if status_bar is initialized
+        if self.status_bar:  # Check if status_bar is initialized
             self.status_bar.setText(f"Switched to: {tab_name}")
 
     def stop_all_workers(self, exclude_server=False):
@@ -2618,12 +2704,16 @@ class NetworkPenTestTool(QMainWindow):
         # Use None for attributes that don't exist for a particular worker type.
         workers_to_check_config = [
             ('scan_worker', 'scanning', 'scan_button', 'stop_button', 'port_scan_results_timer'),
-            ('network_discovery_worker', 'network_discovery_running', 'start_network_discovery_button', 'stop_network_discovery_button', None),
+            ('network_discovery_worker', 'network_discovery_running', 'start_network_discovery_button',
+             'stop_network_discovery_button', None),
             ('netexec_worker', 'netexec_running', 'run_netexec_button', 'stop_netexec_button', None),
             ('brute_force_worker', 'brute_force_running', 'start_brute_force_button', 'stop_brute_force_button', None),
-            ('password_spray_worker', 'password_spray_running', 'start_password_spray_button', 'stop_password_spray_button', None),
-            ('banner_grab_worker', 'banner_grabbing_running', 'start_banner_grab_button', 'stop_banner_grab_button', 'banner_grab_results_timer'),
-            ('secretsdump_worker', 'password_dumping_running', 'start_password_dump_button', 'stop_password_dump_button', None),
+            ('password_spray_worker', 'password_spray_running', 'start_password_spray_button',
+             'stop_password_spray_button', None),
+            ('banner_grab_worker', 'banner_grabbing_running', 'start_banner_grab_button', 'stop_banner_grab_button',
+             'banner_grab_results_timer'),
+            ('secretsdump_worker', 'password_dumping_running', 'start_password_dump_button',
+             'stop_password_dump_button', None),
             ('dummy_file_worker', None, 'create_dummy_button', None, None),
             ('exfil_worker', 'exfil_running', 'perform_exfil_button', None, None)
         ]
@@ -2632,17 +2722,18 @@ class NetworkPenTestTool(QMainWindow):
         exfil_server_worker = getattr(self, 'exfil_server_worker', None)
         if not exclude_server and exfil_server_worker and exfil_server_worker.isRunning():
             exfil_server_worker.stop()
-            self.exfil_server_worker = None # Clear reference
+            self.exfil_server_worker = None  # Clear reference
             # Only enable/disable buttons if they are initialized
-            if hasattr(self, 'start_server_button') and self.start_server_button: self.start_server_button.setEnabled(True)
-            if hasattr(self, 'stop_server_button') and self.stop_server_button: self.stop_server_button.setEnabled(False)
+            if hasattr(self, 'start_server_button') and self.start_server_button: self.start_server_button.setEnabled(
+                True)
+            if hasattr(self, 'stop_server_button') and self.stop_server_button: self.stop_server_button.setEnabled(
+                False)
             if hasattr(self, 'status_bar') and self.status_bar:
                 self.update_exfil_output("Simulated exfil server stopped due to tab change.\n")
 
-
         for worker_attr_name, flag_attr_name, start_btn_attr_name, stop_btn_attr_name, timer_attr_name in workers_to_check_config:
             worker = getattr(self, worker_attr_name, None)
-            
+
             # Safely get button and timer references
             start_button = getattr(self, start_btn_attr_name, None) if start_btn_attr_name else None
             stop_button = getattr(self, stop_btn_attr_name, None) if stop_btn_attr_name else None
@@ -2677,7 +2768,7 @@ class NetworkPenTestTool(QMainWindow):
         """
         Overrides the close event to ensure all threads are stopped gracefully.
         """
-        self.stop_all_workers(exclude_server=False) # Stop all workers, including the server
+        self.stop_all_workers(exclude_server=False)  # Stop all workers, including the server
         event.accept()
 
     def start_scan(self):
@@ -2702,13 +2793,13 @@ class NetworkPenTestTool(QMainWindow):
 
         try:
             threads = int(threads_input)
-            if not (1 <= threads <= 200): # Enforce the new limit
+            if not (1 <= threads <= 200):  # Enforce the new limit
                 raise ValueError("Threads out of range")
         except ValueError:
-            self.show_message_box("Input Error", "Number of threads must be an integer between 1 and 200.", # Updated message
+            self.show_message_box("Input Error", "Number of threads must be an integer between 1 and 200.",
+                                  # Updated message
                                   QMessageBox.Icon.Critical)
             return
-
 
         self.results_text.clear()
         self.status_bar.setText("Scanning...")
@@ -2719,19 +2810,24 @@ class NetworkPenTestTool(QMainWindow):
         if self.use_nmap_checkbox.isChecked():
             # Check if nmap is available
             if not shutil.which("nmap"):
-                self.show_message_box("Nmap Not Found", "Nmap command not found. Please install Nmap or use the Python Port Scanner.", QMessageBox.Icon.Warning)
+                self.show_message_box("Nmap Not Found",
+                                      "Nmap command not found. Please install Nmap or use the Python Port Scanner.",
+                                      QMessageBox.Icon.Warning)
                 self.scanning = False
                 self.scan_button.setEnabled(True)
                 self.stop_button.setEnabled(False)
                 return
             self.scan_worker = NmapScanWorker(target_input, port_range_input, self.authorization_checked)
-            self.scan_worker.update_results.connect(self.update_results) # Nmap worker still uses direct update
+            self.scan_worker.update_results.connect(self.update_results)  # Nmap worker still uses direct update
         elif self.use_python_scanner_checkbox.isChecked():
-            self.scan_worker = AdvancedPortScanWorker(target_input, port_range_input, threads, self.authorization_checked) # Pass threads
-            self.scan_worker.data_available.connect(self._process_scan_results_from_queue) # Connect new signal
-            self.port_scan_results_timer.start() # Start the timer for processing results
+            self.scan_worker = AdvancedPortScanWorker(target_input, port_range_input, threads,
+                                                      self.authorization_checked)  # Pass threads
+            self.scan_worker.data_available.connect(self._process_scan_results_from_queue)  # Connect new signal
+            self.port_scan_results_timer.start()  # Start the timer for processing results
         else:
-            self.show_message_box("Scanner Selection Error", "Please select either 'Use Python Port Scanner' or 'Use Nmap for Scan'.", QMessageBox.Icon.Critical)
+            self.show_message_box("Scanner Selection Error",
+                                  "Please select either 'Use Python Port Scanner' or 'Use Nmap for Scan'.",
+                                  QMessageBox.Icon.Critical)
             self.scanning = False
             self.scan_button.setEnabled(True)
             self.stop_button.setEnabled(False)
@@ -2756,26 +2852,25 @@ class NetworkPenTestTool(QMainWindow):
                 # Auto-scroll to the bottom
                 self.results_text.verticalScrollBar().setValue(self.results_text.verticalScrollBar().maximum())
 
-
     def toggle_nmap_usage(self):
         self.use_nmap_for_scan = self.use_nmap_checkbox.isChecked()
         if self.use_nmap_for_scan:
             self.use_python_scanner_checkbox.setChecked(False)
-            self.threads_entry.setEnabled(False) # Disable threads input for Nmap
+            self.threads_entry.setEnabled(False)  # Disable threads input for Nmap
         else:
             if not self.use_python_scanner_checkbox.isChecked():
                 self.use_python_scanner_checkbox.setChecked(True)
-            self.threads_entry.setEnabled(True) # Enable threads input for Python scanner
+            self.threads_entry.setEnabled(True)  # Enable threads input for Python scanner
 
     def toggle_python_scanner_usage(self):
         self.use_python_for_scan = self.use_python_scanner_checkbox.isChecked()
         if self.use_python_for_scan:
             self.use_nmap_checkbox.setChecked(False)
-            self.threads_entry.setEnabled(True) # Enable threads input for Python scanner
+            self.threads_entry.setEnabled(True)  # Enable threads input for Python scanner
         else:
             if not self.use_nmap_checkbox.isChecked():
                 self.use_nmap_checkbox.setChecked(True)
-            self.threads_entry.setEnabled(False) # Disable threads input for Nmap
+            self.threads_entry.setEnabled(False)  # Disable threads input for Nmap
 
     def stop_scan(self):
         if self.scanning:
@@ -2785,9 +2880,9 @@ class NetworkPenTestTool(QMainWindow):
             self.scan_button.setEnabled(True)
             self.stop_button.setEnabled(False)
             self.status_bar.setText("Scan stopped.")
-            if self.port_scan_results_timer and self.port_scan_results_timer.isActive(): # Check if timer exists and is active
-                self.port_scan_results_timer.stop() # Stop the timer
-            self._process_scan_results_from_queue() # Final flush
+            if self.port_scan_results_timer and self.port_scan_results_timer.isActive():  # Check if timer exists and is active
+                self.port_scan_results_timer.stop()  # Stop the timer
+            self._process_scan_results_from_queue()  # Final flush for Python scanner
         else:
             self.show_message_box("No Scan Running", "No active scan to stop.")
 
@@ -2795,13 +2890,15 @@ class NetworkPenTestTool(QMainWindow):
         self.scanning = False
         self.scan_button.setEnabled(True)
         self.stop_button.setEnabled(False)
-        if self.port_scan_results_timer and self.port_scan_results_timer.isActive(): # Check if timer exists and is active
-            self.port_scan_results_timer.stop() # Stop the timer
-        self._process_scan_results_from_queue() # Final flush
-        self.scan_worker = None # Clear worker reference
+        if self.port_scan_results_timer and self.port_scan_results_timer.isActive():  # Check if timer exists and is active
+            self.port_scan_results_timer.stop()  # Stop the timer
+        # Ensure final flush for Python scanner, Nmap worker uses direct update_results
+        if isinstance(self.scan_worker, AdvancedPortScanWorker):
+            self._process_scan_results_from_queue()
+        self.scan_worker = None  # Clear worker reference
 
     def update_results(self, message):
-        # This method is now only used by the Nmap worker, which emits less frequently.
+        # This method is now primarily used by the Nmap worker.
         self.results_text.append(message.strip())
         self.results_text.verticalScrollBar().setValue(self.results_text.verticalScrollBar().maximum())
 
@@ -2818,7 +2915,9 @@ class NetworkPenTestTool(QMainWindow):
             return
 
         if not SCAPY_AVAILABLE:
-            self.show_message_box("Scapy Not Found", "Scapy is not installed. Network Discovery features require Scapy. Please install it using 'pip install scapy'.", QMessageBox.Icon.Critical)
+            self.show_message_box("Scapy Not Found",
+                                  "Scapy is not installed. Network Discovery features require Scapy. Please install it using 'pip install scapy'.",
+                                  QMessageBox.Icon.Critical)
             return
 
         target_ip = self.network_discovery_target_entry.text().strip()
@@ -2855,16 +2954,17 @@ class NetworkPenTestTool(QMainWindow):
         self.network_discovery_running = False
         self.start_network_discovery_button.setEnabled(True)
         self.stop_network_discovery_button.setEnabled(False)
-        self.network_discovery_worker = None # Clear worker reference
+        self.network_discovery_worker = None  # Clear worker reference
 
     def update_network_discovery_results(self, message):
         self.network_discovery_results_text.append(message.strip())
-        self.network_discovery_results_text.verticalScrollBar().setValue(self.network_discovery_results_text.verticalScrollBar().maximum())
+        self.network_discovery_results_text.verticalScrollBar().setValue(
+            self.network_discovery_results_text.verticalScrollBar().maximum())
 
     # --- Lateral Movement (NetExec) Methods ---
     def on_netexec_protocol_select(self):
         selected_protocol = self.netexec_protocol_combobox.currentText()
-        
+
         # Default command templates for NetExec/CrackMapExec
         command_template = ""
         if selected_protocol == "smb":
@@ -2913,7 +3013,9 @@ class NetworkPenTestTool(QMainWindow):
             executable_to_check = "crackmapexec"
 
         if not shutil.which(executable_to_check):
-            self.show_message_box(f"{executable_to_check} Not Found", f"'{executable_to_check}' command not found. Please install NetExec (or CrackMapExec) and ensure it's in your system's PATH.", QMessageBox.Icon.Warning)
+            self.show_message_box(f"{executable_to_check} Not Found",
+                                  f"'{executable_to_check}' command not found. Please install NetExec (or CrackMapExec) and ensure it's in your system's PATH.",
+                                  QMessageBox.Icon.Warning)
             return
 
         self.netexec_output_text.clear()
@@ -2943,7 +3045,7 @@ class NetworkPenTestTool(QMainWindow):
         self.netexec_running = False
         self.run_netexec_button.setEnabled(True)
         self.stop_netexec_button.setEnabled(False)
-        self.netexec_worker = None # Clear worker reference
+        self.netexec_worker = None  # Clear worker reference
 
     def update_netexec_output(self, message):
         self.netexec_output_text.append(message.strip())
@@ -2953,7 +3055,7 @@ class NetworkPenTestTool(QMainWindow):
     def on_brute_force_tool_select(self):
         selected_tool = self.brute_force_tool_combobox.currentText()
         selected_protocol = self.brute_force_protocol_combobox.currentText()
-        
+
         # Update command template based on selected tool and protocol
         command_template = ""
         if selected_tool == "Hydra":
@@ -2961,19 +3063,19 @@ class NetworkPenTestTool(QMainWindow):
         elif selected_tool == "NetExec":
             # Changed from -P to -p based on user feedback for flag compatibility.
             command_template = f"netexec {selected_protocol} <target_ip> -u <username> -p <wordlist_file> --continue-on-success"
-        elif selected_tool == "CrackMapExec": # CrackMapExec is an alias for NetExec
+        elif selected_tool == "CrackMapExec":  # CrackMapExec is an alias for NetExec
             # Changed from -P to -p based on user feedback for flag compatibility.
             command_template = f"crackmapexec {selected_protocol} <target_ip> -u <username> -p <wordlist_file> --continue-on-success"
-    
+
         self.brute_force_command_edit.setText(command_template)
 
     def on_brute_force_wordlist_option_changed(self):
         # Temporarily block signals to prevent recursive calls
         self.use_rockyou_checkbox.blockSignals(True)
         self.brute_force_paste_wordlist_text.blockSignals(True)
-        
+
         pasted_text_present = self.brute_force_paste_wordlist_text.toPlainText().strip() != ""
-        
+
         file_path_value = getattr(self, 'brute_force_wordlist_file_path', None)
         file_path_exists = file_path_value is not None and os.path.exists(file_path_value)
 
@@ -2984,36 +3086,35 @@ class NetworkPenTestTool(QMainWindow):
             self.brute_force_paste_wordlist_text.setEnabled(True)
             self.upload_brute_force_wordlist_button.setEnabled(False)
             self.brute_force_wordlist_file_label.setText("Using pasted wordlist.")
-            self.brute_force_wordlist_file_path = None # Clear file path if pasting
+            self.brute_force_wordlist_file_path = None  # Clear file path if pasting
         elif self.use_rockyou_checkbox.isChecked():
             # User selected default rockyou.txt
             self.brute_force_paste_wordlist_text.clear()
             self.brute_force_paste_wordlist_text.setEnabled(False)
             self.upload_brute_force_wordlist_button.setEnabled(False)
             self.brute_force_wordlist_file_label.setText("Using default rockyou.txt")
-            self.brute_force_wordlist_file_path = None # Clear file path if using default
+            self.brute_force_wordlist_file_path = None  # Clear file path if using default
         elif file_path_exists:
             # A file was previously uploaded and still exists
             self.use_rockyou_checkbox.setChecked(False)
             self.brute_force_paste_wordlist_text.clear()
             self.brute_force_paste_wordlist_text.setEnabled(False)
-            self.upload_brute_force_wordlist_button.setEnabled(True) # Keep enabled to allow changing file
+            self.upload_brute_force_wordlist_button.setEnabled(True)  # Keep enabled to allow changing file
             # Label is already set by upload_brute_force_wordlist, and path is kept
         else:
             # No paste, no default checked, no existing uploaded file.
             # This means the user has unchecked default and cleared paste,
             # or started fresh without any explicit selection.
             # In this case, enable both paste and upload options.
-            self.use_rockyou_checkbox.setChecked(False) # Ensure it's unchecked
+            self.use_rockyou_checkbox.setChecked(False)  # Ensure it's unchecked
             self.brute_force_paste_wordlist_text.setEnabled(True)
             self.upload_brute_force_wordlist_button.setEnabled(True)
             self.brute_force_wordlist_file_label.setText("No file selected.")
-            self.brute_force_wordlist_file_path = None # Ensure no stale path
+            self.brute_force_wordlist_file_path = None  # Ensure no stale path
 
         # Re-enable signals
         self.use_rockyou_checkbox.blockSignals(False)
         self.brute_force_paste_wordlist_text.blockSignals(False)
-
 
     def upload_brute_force_wordlist(self):
         file_dialog = QFileDialog(self)
@@ -3021,9 +3122,9 @@ class NetworkPenTestTool(QMainWindow):
         file_dialog.setNameFilter("Text files (*.txt)")
         if file_dialog.exec() == QFileDialog.DialogCode.Accepted:
             selected_file = file_dialog.selectedFiles()[0]
-            self.brute_force_wordlist_file_path = selected_file # Store path
+            self.brute_force_wordlist_file_path = selected_file  # Store path
             self.brute_force_wordlist_file_label.setText(os.path.basename(selected_file))
-            self.on_brute_force_wordlist_option_changed() # Update UI state after file selection
+            self.on_brute_force_wordlist_option_changed()  # Update UI state after file selection
 
     def start_brute_force(self):
         if self.brute_force_running:
@@ -3040,37 +3141,43 @@ class NetworkPenTestTool(QMainWindow):
         username = self.brute_force_username_entry.text().strip()
         tool = self.brute_force_tool_combobox.currentText()
         protocol = self.brute_force_protocol_combobox.currentText()
-        edited_command = self.brute_force_command_edit.text().strip() # Get edited command
+        edited_command = self.brute_force_command_edit.text().strip()  # Get edited command
 
         if not target or not username:
             self.show_message_box("Input Error", "Please enter a target and a username.", QMessageBox.Icon.Critical)
             return
 
         wordlist_content = ""
-        wordlist_source_path = None # To store the actual path if using file
-        if self.brute_force_paste_wordlist_text.toPlainText().strip(): # Priority 1: Pasted text
+        wordlist_source_path = None  # To store the actual path if using file
+        if self.brute_force_paste_wordlist_text.toPlainText().strip():  # Priority 1: Pasted text
             wordlist_content = self.brute_force_paste_wordlist_text.toPlainText().strip()
-        elif hasattr(self, 'brute_force_wordlist_file_path') and self.brute_force_wordlist_file_path is not None and os.path.exists(self.brute_force_wordlist_file_path): # Priority 2: Uploaded file
+        elif hasattr(self, 'brute_force_wordlist_file_path') and self.brute_force_wordlist_file_path is not None and os.path.exists(
+                self.brute_force_wordlist_file_path):  # Priority 2: Uploaded file
             try:
                 with open(self.brute_force_wordlist_file_path, 'r') as f:
                     wordlist_content = f.read().strip()
-                wordlist_source_path = self.brute_force_wordlist_file_path # Store path for replacement
+                wordlist_source_path = self.brute_force_wordlist_file_path  # Store path for replacement
             except Exception as e:
                 self.show_message_box("File Error", f"Could not read wordlist file: {e}", QMessageBox.Icon.Critical)
                 return
-        elif self.use_rockyou_checkbox.isChecked(): # Priority 3: Default rockyou
+        elif self.use_rockyou_checkbox.isChecked():  # Priority 3: Default rockyou
             try:
                 with open(self.rockyou_wordlist_path, 'r') as f:
                     wordlist_content = f.read().strip()
-                wordlist_source_path = self.rockyou_wordlist_path # Store path for replacement
+                wordlist_source_path = self.rockyou_wordlist_path  # Store path for replacement
             except FileNotFoundError:
-                self.show_message_box("File Error", f"Default rockyou.txt not found at '{self.rockyou_wordlist_path}'. Please create it or provide your own.", QMessageBox.Icon.Critical)
+                self.show_message_box("File Error",
+                                      f"Default rockyou.txt not found at '{self.rockyou_wordlist_path}'. Please create it or provide your own.",
+                                      QMessageBox.Icon.Critical)
                 return
             except Exception as e:
-                self.show_message_box("File Error", f"Error reading default rockyou.txt: {e}", QMessageBox.Icon.Critical)
+                self.show_message_box("File Error", f"Error reading default rockyou.txt: {e}",
+                                      QMessageBox.Icon.Critical)
                 return
-        else: # Fallback: No wordlist selected/provided
-            self.show_message_box("Wordlist Error", "Please provide a wordlist (paste or upload) or select 'Use default rockyou.txt'.", QMessageBox.Icon.Critical)
+        else:  # Fallback: No wordlist selected/provided
+            self.show_message_box("Wordlist Error",
+                                  "Please provide a wordlist (paste or upload) or select 'Use default rockyou.txt'.",
+                                  QMessageBox.Icon.Critical)
             return
 
         if not wordlist_content:
@@ -3083,7 +3190,9 @@ class NetworkPenTestTool(QMainWindow):
             tool_command_executable = "crackmapexec"
 
         if not shutil.which(tool_command_executable):
-            self.show_message_box(f"{tool} Not Found", f"'{tool_command_executable}' command not found. Please install {tool} and ensure it's in your system's PATH.", QMessageBox.Icon.Warning)
+            self.show_message_box(f"{tool} Not Found",
+                                  f"'{tool_command_executable}' command not found. Please install {tool} and ensure it's in your system's PATH.",
+                                  QMessageBox.Icon.Warning)
             return
 
         self.brute_force_output_text.clear()
@@ -3092,7 +3201,8 @@ class NetworkPenTestTool(QMainWindow):
         self.stop_brute_force_button.setEnabled(True)
 
         # Pass the edited command string, and the determined wordlist content/path
-        self.brute_force_worker = BruteForceWorker(target, username, wordlist_content, tool, protocol, self.authorization_checked)
+        self.brute_force_worker = BruteForceWorker(target, username, wordlist_content, tool, protocol,
+                                                   self.authorization_checked)
         self.brute_force_worker.update_output.connect(self.update_brute_force_output)
         self.brute_force_worker.update_status.connect(self.status_bar.setText)
         self.brute_force_worker.brute_force_finished.connect(self.on_brute_force_finished)
@@ -3113,11 +3223,12 @@ class NetworkPenTestTool(QMainWindow):
         self.brute_force_running = False
         self.start_brute_force_button.setEnabled(True)
         self.stop_brute_force_button.setEnabled(False)
-        self.brute_force_worker = None # Clear worker reference
+        self.brute_force_worker = None  # Clear worker reference
 
     def update_brute_force_output(self, message):
         self.brute_force_output_text.append(message.strip())
-        self.brute_force_output_text.verticalScrollBar().setValue(self.brute_force_output_text.verticalScrollBar().maximum())
+        self.brute_force_output_text.verticalScrollBar().setValue(
+            self.brute_force_output_text.verticalScrollBar().maximum())
 
     # --- Password Spray Methods ---
     def on_password_spray_tool_select(self):
@@ -3134,17 +3245,18 @@ class NetworkPenTestTool(QMainWindow):
         elif selected_tool == "CrackMapExec":
             # Changed from -U to -u based on user feedback for flag compatibility.
             command_template = f"crackmapexec {selected_protocol} <target_ip> -u <usernames_file> -p <password>"
-        
+
         self.password_spray_command_edit.setText(command_template)
 
     def on_password_spray_usernames_option_changed(self):
         paste_usernames_empty = self.password_spray_paste_usernames_text.toPlainText().strip() == ""
-        
+
         # Safely check for file existence
         file_path_value = getattr(self, 'password_spray_usernames_file_path', None)
         file_selected = file_path_value is not None and \
                         os.path.exists(file_path_value) and \
-                        self.password_spray_usernames_file_label.text() not in ["No file selected.", "Using pasted usernames."]
+                        self.password_spray_usernames_file_label.text() not in ["No file selected.",
+                                                                                 "Using pasted usernames."]
 
         if not paste_usernames_empty:
             self.password_spray_paste_usernames_text.setEnabled(True)
@@ -3159,7 +3271,6 @@ class NetworkPenTestTool(QMainWindow):
             self.password_spray_paste_usernames_text.setEnabled(True)
             self.upload_password_spray_usernames_button.setEnabled(True)
             self.password_spray_usernames_file_label.setText("No file selected.")
-
 
     def upload_password_spray_usernames(self):
         file_dialog = QFileDialog(self)
@@ -3186,26 +3297,28 @@ class NetworkPenTestTool(QMainWindow):
         password = self.password_spray_password_entry.text().strip()
         tool = self.password_spray_tool_combobox.currentText()
         protocol = self.password_spray_protocol_combobox.currentText()
-        edited_command = self.password_spray_command_edit.text().strip() # Get edited command
+        edited_command = self.password_spray_command_edit.text().strip()  # Get edited command
 
         if not target or not password:
             self.show_message_box("Input Error", "Please enter a target and a password.", QMessageBox.Icon.Critical)
             return
 
         usernames_content = ""
-        usernames_source_path = None # To store the actual path if using file
+        usernames_source_path = None  # To store the actual path if using file
         if self.password_spray_paste_usernames_text.toPlainText().strip():
             usernames_content = self.password_spray_paste_usernames_text.toPlainText().strip()
-        elif hasattr(self, 'password_spray_usernames_file_path') and self.password_spray_usernames_file_path is not None and os.path.exists(self.password_spray_usernames_file_path): # Added None check
+        elif hasattr(self, 'password_spray_usernames_file_path') and self.password_spray_usernames_file_path is not None and os.path.exists(
+                self.password_spray_usernames_file_path):  # Added None check
             try:
                 with open(self.password_spray_usernames_file_path, 'r') as f:
                     usernames_content = f.read().strip()
-                usernames_source_path = self.password_spray_usernames_file_path # Store path for replacement
+                usernames_source_path = self.password_spray_usernames_file_path  # Store path for replacement
             except Exception as e:
                 self.show_message_box("File Error", f"Could not read usernames file: {e}", QMessageBox.Icon.Critical)
                 return
         else:
-            self.show_message_box("Usernames Error", "Please provide a list of usernames (paste or upload).", QMessageBox.Icon.Critical)
+            self.show_message_box("Usernames Error", "Please provide a list of usernames (paste or upload).",
+                                  QMessageBox.Icon.Critical)
             return
 
         if not usernames_content:
@@ -3218,7 +3331,9 @@ class NetworkPenTestTool(QMainWindow):
             tool_command_executable = "crackmapexec"
 
         if not shutil.which(tool_command_executable):
-            self.show_message_box(f"{tool} Not Found", f"'{tool_command_executable}' command not found. Please install {tool} and ensure it's in your system's PATH.", QMessageBox.Icon.Warning)
+            self.show_message_box(f"{tool} Not Found",
+                                  f"'{tool_command_executable}' command not found. Please install {tool} and ensure it's in your system's PATH.",
+                                  QMessageBox.Icon.Warning)
             return
 
         self.password_spray_output_text.clear()
@@ -3228,7 +3343,8 @@ class NetworkPenTestTool(QMainWindow):
         self.stop_password_spray_button.setEnabled(True)
 
         # Pass the edited command string, and the determined usernames content/path
-        self.password_spray_worker = PasswordSprayWorker(target, usernames_content, password, tool, protocol, self.authorization_checked)
+        self.password_spray_worker = PasswordSprayWorker(target, usernames_content, password, tool, protocol,
+                                                         self.authorization_checked)
         self.password_spray_worker.update_output.connect(self.update_password_spray_output)
         self.password_spray_worker.update_status.connect(self.status_bar.setText)
         self.password_spray_worker.password_spray_finished.connect(self.on_password_spray_finished)
@@ -3249,11 +3365,12 @@ class NetworkPenTestTool(QMainWindow):
         self.password_spray_running = False
         self.start_password_spray_button.setEnabled(True)
         self.stop_password_spray_button.setEnabled(False)
-        self.password_spray_worker = None # Clear worker reference
+        self.password_spray_worker = None  # Clear worker reference
 
     def update_password_spray_output(self, message):
         self.password_spray_output_text.append(message.strip())
-        self.password_spray_output_text.verticalScrollBar().setValue(self.password_spray_output_text.verticalScrollBar().maximum())
+        self.password_spray_output_text.verticalScrollBar().setValue(
+            self.password_spray_output_text.verticalScrollBar().maximum())
 
     # --- Banner Grabbing Methods ---
     def start_banner_grabbing(self):
@@ -3271,7 +3388,8 @@ class NetworkPenTestTool(QMainWindow):
         port_input = self.banner_grab_port_entry.text().strip()
 
         if not target_input or not port_input:
-            self.show_message_box("Input Error", "Please enter a target IP/hostname/CIDR and port(s).", QMessageBox.Icon.Critical)
+            self.show_message_box("Input Error", "Please enter a target IP/hostname/CIDR and port(s).",
+                                  QMessageBox.Icon.Critical)
             return
 
         # --- Parse Targets (IPs from CIDR, Hostname, or single IP) ---
@@ -3279,23 +3397,26 @@ class NetworkPenTestTool(QMainWindow):
         try:
             # Try to parse as CIDR
             network = ipaddress.ip_network(target_input, strict=False)
-            if network.prefixlen < 32: # It's a subnet
+            if network.prefixlen < 32:  # It's a subnet
                 targets_to_scan.extend([str(ip) for ip in network.hosts()])
-            else: # It's a single IP in CIDR format (e.g., 192.168.1.1/32)
+            else:  # It's a single IP in CIDR format (e.g., 192.168.1.1/32)
                 targets_to_scan.append(str(network.network_address))
         except ValueError:
             # Not a CIDR, try hostname resolution
             try:
                 targets_to_scan.append(socket.gethostbyname(target_input))
             except socket.gaierror:
-                self.show_message_box("Input Error", f"Hostname '{target_input}' could not be resolved.", QMessageBox.Icon.Critical)
+                self.show_message_box("Input Error", f"Hostname '{target_input}' could not be resolved.",
+                                      QMessageBox.Icon.Critical)
                 return
             except Exception as e:
-                self.show_message_box("Input Error", f"Invalid target IP/Hostname/CIDR: {e}", QMessageBox.Icon.Critical)
+                self.show_message_box("Input Error", f"Invalid target IP/Hostname/CIDR: {e}",
+                                      QMessageBox.Icon.Critical)
                 return
 
         if not targets_to_scan:
-            self.show_message_box("Input Error", "No valid target IPs could be determined.", QMessageBox.Icon.Critical)
+            self.show_message_box("Input Error", "No valid target IPs could be determined.",
+                                  QMessageBox.Icon.Critical)
             return
 
         # --- Parse Ports (comma-separated) ---
@@ -3312,7 +3433,9 @@ class NetworkPenTestTool(QMainWindow):
                     raise ValueError("Port out of range")
                 ports_to_scan.append(port)
             except ValueError:
-                self.show_message_box("Input Error", f"Invalid port number: '{p_str}'. Ports must be integers between 1 and 65535.", QMessageBox.Icon.Critical)
+                self.show_message_box("Input Error",
+                                      f"Invalid port number: '{p_str}'. Ports must be integers between 1 and 65535.",
+                                      QMessageBox.Icon.Critical)
                 return
 
         # --- Create a list of (IP, Port) tuples for the worker ---
@@ -3328,11 +3451,11 @@ class NetworkPenTestTool(QMainWindow):
         self.stop_banner_grab_button.setEnabled(True)
 
         self.banner_grab_worker = BannerGrabbingWorker(target_ip_port_list, self.authorization_checked)
-        self.banner_grab_worker.data_available.connect(self._process_banner_grab_results_from_queue) # Connect new signal
+        self.banner_grab_worker.data_available.connect(self._process_banner_grab_results_from_queue)  # Connect new signal
         self.banner_grab_worker.update_status.connect(self.status_bar.setText)
         self.banner_grab_worker.grab_finished.connect(self.on_banner_grab_finished)
         self.banner_grab_worker.start()
-        self.banner_grab_results_timer.start() # Start the timer for processing results
+        self.banner_grab_results_timer.start()  # Start the timer for processing results
 
     def _process_banner_grab_results_from_queue(self):
         """Reads all available results from the banner grab worker's queue and updates the QTextEdit."""
@@ -3347,8 +3470,8 @@ class NetworkPenTestTool(QMainWindow):
             if results_batch:
                 self.banner_grab_output_text.append("".join(results_batch))
                 # Auto-scroll to the bottom
-                self.banner_grab_output_text.verticalScrollBar().setValue(self.banner_grab_output_text.verticalScrollBar().maximum())
-
+                self.banner_grab_output_text.verticalScrollBar().setValue(
+                    self.banner_grab_output_text.verticalScrollBar().maximum())
 
     def stop_banner_grabbing(self):
         if self.banner_grabbing_running:
@@ -3358,9 +3481,9 @@ class NetworkPenTestTool(QMainWindow):
             self.start_banner_grab_button.setEnabled(True)
             self.stop_banner_grab_button.setEnabled(False)
             self.status_bar.setText("Banner grabbing stopped.")
-            if self.banner_grab_results_timer and self.banner_grab_results_timer.isActive(): # Check if timer exists and is active
-                self.banner_grab_results_timer.stop() # Stop the timer
-            self._process_banner_grab_results_from_queue() # Final flush
+            if self.banner_grab_results_timer and self.banner_grab_results_timer.isActive():  # Check if timer exists and is active
+                self.banner_grab_results_timer.stop()  # Stop the timer
+            self._process_banner_grab_results_from_queue()  # Final flush
         else:
             self.show_message_box("No Banner Grabbing Running", "No active banner grabbing operation to stop.")
 
@@ -3368,10 +3491,10 @@ class NetworkPenTestTool(QMainWindow):
         self.banner_grabbing_running = False
         self.start_banner_grab_button.setEnabled(True)
         self.stop_banner_grab_button.setEnabled(False)
-        if self.banner_grab_results_timer and self.banner_grab_results_timer.isActive(): # Check if timer exists and is active
-            self.banner_grab_results_timer.stop() # Stop the timer
-        self._process_banner_grab_results_from_queue() # Final flush
-        self.banner_grab_worker = None # Clear worker reference
+        if self.banner_grab_results_timer and self.banner_grab_results_timer.isActive():  # Check if timer exists and is active
+            self.banner_grab_results_timer.stop()  # Stop the timer
+        self._process_banner_grab_results_from_queue()  # Final flush
+        self.banner_grab_worker = None  # Clear worker reference
 
     # Removed update_banner_grab_output as it's replaced by _process_banner_grab_results_from_queue
     # def update_banner_grab_output(self, message):
@@ -3382,7 +3505,8 @@ class NetworkPenTestTool(QMainWindow):
     def on_secretsdump_auth_type_changed(self):
         if self.secretsdump_use_hashes_checkbox.isChecked():
             self.secretsdump_password_label.setText("Hash (LM:NT):")
-            self.secretsdump_password_entry.setPlaceholderText("e.g., aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0")
+            self.secretsdump_password_entry.setPlaceholderText(
+                "e.g., aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0")
             self.secretsdump_password_entry.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
             self.secretsdump_password_label.setText("Password:")
@@ -3414,7 +3538,9 @@ class NetworkPenTestTool(QMainWindow):
 
         # Check if secretsdump.py is available
         if not shutil.which("secretsdump.py"):
-            self.show_message_box("secretsdump.py Not Found", "secretsdump.py command not found. Please install Impacket and ensure 'secretsdump.py' is in your system's PATH.", QMessageBox.Icon.Warning)
+            self.show_message_box("secretsdump.py Not Found",
+                                  "secretsdump.py command not found. Please install Impacket and ensure 'secretsdump.py' is in your system's PATH.",
+                                  QMessageBox.Icon.Warning)
             return
 
         self.password_dump_output_text.clear()
@@ -3446,11 +3572,12 @@ class NetworkPenTestTool(QMainWindow):
         self.password_dumping_running = False
         self.start_password_dump_button.setEnabled(True)
         self.stop_password_dump_button.setEnabled(False)
-        self.secretsdump_worker = None # Clear worker reference
+        self.secretsdump_worker = None  # Clear worker reference
 
     def update_password_dump_output(self, message):
         self.password_dump_output_text.append(message.strip())
-        self.password_dump_output_text.verticalScrollBar().setValue(self.password_dump_output_text.verticalScrollBar().maximum())
+        self.password_dump_output_text.verticalScrollBar().setValue(
+            self.password_dump_output_text.verticalScrollBar().maximum())
 
     # --- Exfil Methods ---
     def create_dummy_file(self):
@@ -3475,7 +3602,7 @@ class NetworkPenTestTool(QMainWindow):
     def start_exfil_server(self):
         global simulated_exfil_server, simulated_exfil_server_thread
 
-        if simulated_exfil_server_thread and simulated_exfil_server_thread.is_alive(): # Check if thread is alive
+        if simulated_exfil_server_thread and simulated_exfil_server_thread.is_alive():  # Check if thread is alive
             self.show_message_box("Server Running", "Exfil server is already running.")
             return
 
@@ -3487,7 +3614,7 @@ class NetworkPenTestTool(QMainWindow):
         self.exfil_server_worker.server_stopped.connect(lambda msg: (self.update_exfil_output(msg), self.status_bar.setText("Exfil server stopped."), self.start_server_button.setEnabled(True), self.stop_server_button.setEnabled(False)))
         self.exfil_server_worker.server_error.connect(lambda msg: (self.update_exfil_output(msg), self.status_bar.setText(f"Error: {msg.strip()}"), self.show_message_box("Server Error", msg, QMessageBox.Icon.Critical)))
         self.exfil_server_worker.start()
-        simulated_exfil_server_thread = self.exfil_server_worker # Store the QThread instance
+        simulated_exfil_server_thread = self.exfil_server_worker  # Store the QThread instance
 
     def stop_exfil_server(self):
         global simulated_exfil_server_thread
@@ -3495,8 +3622,8 @@ class NetworkPenTestTool(QMainWindow):
             self.update_exfil_output("Stopping simulated exfil server...\n")
             self.status_bar.setText("Stopping exfil server...")
             if self.exfil_server_worker:
-                self.exfil_server_worker.stop() # Call stop method on the QThread
-            simulated_exfil_server_thread = None # Clear the reference
+                self.exfil_server_worker.stop()  # Call stop method on the QThread
+            simulated_exfil_server_thread = None  # Clear the reference
         else:
             self.show_message_box("Server Not Running", "Exfil server is not running.")
 
@@ -3509,7 +3636,6 @@ class NetworkPenTestTool(QMainWindow):
             self.exfil_uploaded_file_path = None
             self.exfil_selected_file_label.setText("No file selected for exfil.")
 
-
     def on_exfil_type_select(self):
         selected_type = self.exfil_type_combobox.currentText()
 
@@ -3518,7 +3644,6 @@ class NetworkPenTestTool(QMainWindow):
         self.local_dest_entry.setVisible(selected_type in ["Local (Internal)", "Both"])
         self.remote_url_label.setVisible(selected_type in ["Remote (External)", "Both"])
         self.exfil_remote_url_entry.setVisible(selected_type in ["Remote (External)", "Both"])
-
 
     def perform_exfil(self):
         if self.exfil_running:
@@ -3531,9 +3656,10 @@ class NetworkPenTestTool(QMainWindow):
                                    QMessageBox.Icon.Warning)
             return
 
-        source_file = self.exfil_uploaded_file_path # Use the uploaded file path
+        source_file = self.exfil_uploaded_file_path  # Use the uploaded file path
         if not source_file:
-            self.show_message_box("File Not Selected", "Please select a file to exfiltrate using 'Select File for Exfil'.",
+            self.show_message_box("File Not Selected",
+                                  "Please select a file to exfiltrate using 'Select File for Exfil'.",
                                   QMessageBox.Icon.Critical)
             return
 
@@ -3541,7 +3667,6 @@ class NetworkPenTestTool(QMainWindow):
             self.show_message_box("File Not Found", f"Source file '{source_file}' does not exist.",
                                   QMessageBox.Icon.Critical)
             return
-
 
         exfil_type = self.exfil_type_combobox.currentText()
         local_dest_dir = self.local_dest_entry.text().strip()
@@ -3556,7 +3681,8 @@ class NetworkPenTestTool(QMainWindow):
                                   QMessageBox.Icon.Critical)
             return
         elif exfil_type == "Both" and (not local_dest_dir or not remote_url):
-            self.show_message_box("Input Error", "Please enter both local destination path and remote exfil URL for 'Both' mode.",
+            self.show_message_box("Input Error",
+                                  "Please enter both local destination path and remote exfil URL for 'Both' mode.",
                                   QMessageBox.Icon.Critical)
             return
 
@@ -3589,7 +3715,7 @@ class NetworkPenTestTool(QMainWindow):
     def on_exfil_finished(self):
         self.exfil_running = False
         self.perform_exfil_button.setEnabled(True)
-        self.exfil_worker = None # Clear worker reference
+        self.exfil_worker = None  # Clear worker reference
 
     def update_exfil_output(self, message):
         self.exfil_output_text.append(message.strip())
@@ -3612,7 +3738,7 @@ if __name__ == "__main__":
         SCAPY_AVAILABLE = True
     except ImportError:
         print("Warning: Scapy is still not available after installation attempt. Network Discovery features will be unavailable.")
-        SCAPY_AVAILABLE = False # Ensure it's False if import still fails
+        SCAPY_AVAILABLE = False  # Ensure it's False if import still fails
 
     app = QApplication(sys.argv)
     window = NetworkPenTestTool()
