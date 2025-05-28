@@ -1867,7 +1867,7 @@ class NetworkPenTestTool(QMainWindow):
         self.raven_icon_label = QLabel()
         # Attempt to load "Raven.png", scale it, and set it.
         # If "Raven.png" is not found, it will fall back to a placeholder text.
-        raven_pixmap = QPixmap("Raven.png")
+        raven_pixmap = QPixmap("assets/Raven.png")
         if raven_pixmap.isNull():
             self.raven_icon_label.setText("[RAVEN]")  # Placeholder text if image not found
             self.raven_icon_label.setFont(QFont("Arial", 32))  # Set font for placeholder
