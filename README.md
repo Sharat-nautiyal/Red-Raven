@@ -18,23 +18,22 @@ To execute Red Raven from the command line, follow these steps:
 1.  **Clone the Git Repository:**
     Open your terminal and clone the Red Raven repository from GitHub using the following command:
     ```bash
-    git clone [your-repo-url]
-    cd [your-repo-name]
+    git clone https://github.com/Sharat-nautiyal/Red-Raven.git
+    cd Red-Raven
     ```
-    *(Replace `[your-repo-url]` with the actual URL of your Red Raven repository and `[your-repo-name]` with the name of the cloned directory).*
 
-2.  **Make the `run.sh` script executable:**
-    Navigate into the cloned directory and give the `run.sh` script execute permissions:
-    ```bash
+3.  **Make the `run.sh` script executable:**
+    Navigate into the cloned directory (Red-Raven) and give the `run.sh` script execute permissions:
+    
     chmod +x run.sh
-    ```
+   
 
-3.  **Run Red Raven:**
+4.  **Run Red Raven:**
     Execute the `run.sh` script:
-    ```bash
+    
     ./run.sh
-    ```
-    This script will attempt to launch the Red Raven application, handling necessary environment setup.
+    
+    run.sh script will attempt to launch the Red Raven application, handling necessary environment setup.
     
 ------
 
