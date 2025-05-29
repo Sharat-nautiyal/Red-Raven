@@ -11,6 +11,33 @@ Welcome to Red Raven, a comprehensive network penetration testing tool designed 
 
 **Disclaimer:** This tool is for educational purposes only. Unauthorized activities on networks or systems without explicit permission are illegal and unethical. Always ensure you have proper authorization before performing any scans or interactions.
 
+## Running Red Raven from the Command Line (CLI)
+
+To execute Red Raven from the command line, follow these steps:
+
+1.  **Clone the Git Repository:**
+    Open your terminal and clone the Red Raven repository from GitHub using the following command:
+    ```bash
+    git clone [your-repo-url]
+    cd [your-repo-name]
+    ```
+    *(Replace `[your-repo-url]` with the actual URL of your Red Raven repository and `[your-repo-name]` with the name of the cloned directory).*
+
+2.  **Make the `run.sh` script executable:**
+    Navigate into the cloned directory and give the `run.sh` script execute permissions:
+    ```bash
+    chmod +x run.sh
+    ```
+
+3.  **Run Red Raven:**
+    Execute the `run.sh` script:
+    ```bash
+    ./run.sh
+    ```
+    This script will attempt to launch the Red Raven application, handling necessary environment setup.
+    
+------
+
 
 ## 1. Overview
 
