@@ -14,6 +14,8 @@ Welcome to Red Raven, a comprehensive network penetration testing tool designed 
 
 ## Video recording of the walkthrough - https://www.youtube.com/watch?v=aYuJDPF5GUM
 
+
+
 ## Running Red Raven from the Command Line (CLI)
 
 To execute Red Raven from the command line, follow these steps:
@@ -22,6 +24,7 @@ To execute Red Raven from the command line, follow these steps:
     Open your terminal and clone the Red Raven repository from GitHub using the following command:
     
     git clone https://github.com/Sharat-nautiyal/Red-Raven.git
+    
     cd Red-Raven
    
 
