@@ -11,6 +11,9 @@ Welcome to Red Raven, a comprehensive network penetration testing tool designed 
 
 **Disclaimer:** This tool is for educational purposes only. Unauthorized activities on networks or systems without explicit permission are illegal and unethical. Always ensure you have proper authorization before performing any scans or interactions.
 
+
+## Video recording of the walkthrough - https://www.youtube.com/watch?v=aYuJDPF5GUM
+
 ## Running Red Raven from the Command Line (CLI)
 
 To execute Red Raven from the command line, follow these steps:
